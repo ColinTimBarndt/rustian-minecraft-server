@@ -1,0 +1,29 @@
+[09:53:23] [main/INFO]: Starting provider: SNBT -> NBT
+[09:53:23] [main/INFO]: SNBT -> NBT finished after 1 ms
+[09:53:23] [main/INFO]: Starting provider: Fluid Tags
+[09:53:23] [main/INFO]: Fluid Tags finished after 23 ms
+[09:53:23] [main/INFO]: Starting provider: Block Tags
+[09:53:23] [main/INFO]: Block Tags finished after 20 ms
+[09:53:23] [main/INFO]: Starting provider: Item Tags
+[09:53:23] [main/INFO]: Item Tags finished after 8 ms
+[09:53:23] [main/INFO]: Starting provider: Entity Type Tags
+[09:53:23] [main/INFO]: Entity Type Tags finished after 2 ms
+[09:53:23] [main/INFO]: Starting provider: Recipes
+[09:53:23] [main/INFO]: Recipes finished after 286 ms
+[09:53:23] [main/INFO]: Starting provider: Advancements
+[09:53:23] [main/INFO]: Advancements finished after 103 ms
+[09:53:23] [main/INFO]: Starting provider: LootTables
+[09:53:23] [main/INFO]: LootTables finished after 324 ms
+[09:53:23] [main/INFO]: Starting provider: Block List
+[09:53:24] [main/INFO]: Block List finished after 229 ms
+[09:53:24] [main/INFO]: Starting provider: Registry Dump
+[09:53:24] [main/INFO]: Registry Dump finished after 42 ms
+[09:53:24] [main/INFO]: Starting provider: Command Syntax
+[09:53:24] [main/ERROR]: Failed to load properties from file: server.properties
+[09:53:24] [main/WARN]: Ambiguity between arguments [teleport, destination] and [teleport, targets] with inputs: [Player, 0123, @e, dd12be42-52a9-4a91-a8a1-11c01849e498]
+[09:53:24] [main/WARN]: Ambiguity between arguments [teleport, location] and [teleport, destination] with inputs: [0.1 -0.5 .9, 0 0 0]
+[09:53:24] [main/WARN]: Ambiguity between arguments [teleport, location] and [teleport, targets] with inputs: [0.1 -0.5 .9, 0 0 0]
+[09:53:24] [main/WARN]: Ambiguity between arguments [teleport, targets] and [teleport, destination] with inputs: [Player, 0123, dd12be42-52a9-4a91-a8a1-11c01849e498]
+[09:53:24] [main/WARN]: Ambiguity between arguments [teleport, targets, location] and [teleport, targets, destination] with inputs: [0.1 -0.5 .9, 0 0 0]
+[09:53:24] [main/INFO]: Command Syntax finished after 513 ms
+[09:53:24] [main/INFO]: All providers took: 1574 ms
