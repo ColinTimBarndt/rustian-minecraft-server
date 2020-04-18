@@ -1,17 +1,17 @@
 //#![allow(unused)]
 
-use tokio::sync::mpsc::error::SendError;
-use crate::server::MinecraftServer;
-use uuid::Uuid;
-use std::error::Error;
-use std::net::SocketAddr;
-use std::fmt::{Debug, Display};
-use std::sync::{Arc};
+use crate::server::MinecraftServerHandle;
 use core::hash::{Hash, Hasher};
-use futures::lock::Mutex;
-use tokio::net::TcpStream;
-use tokio::sync::mpsc::Sender;
 use num_derive::FromPrimitive;
+use openssl::pkey::Private;
+use openssl::rsa::Rsa;
+use std::error::Error;
+use std::fmt::{Debug, Display};
+use std::net::SocketAddr;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::Sender;
+use uuid::Uuid;
 extern crate colorful;
 
 pub mod packet_handler;
@@ -22,9 +22,9 @@ pub mod data;
 
 // Packets
 pub mod handshake;
-pub mod status;
 pub mod login;
 pub mod play;
+pub mod status;
 
 pub trait PacketSerialIn: Sized {
     const ID: u32;
@@ -59,16 +59,16 @@ pub fn get_packet_id_in<T: PacketSerialIn>(_: &T) -> u32 {
 #[derive(Debug)]
 pub struct PlayerConnection {
     pub address: SocketAddr,
-    pub server: Arc<Mutex<MinecraftServer>>,
+    pub server: MinecraftServerHandle,
     handler_channel: Sender<PacketHandlerMessage>,
     sender_channel: Sender<PacketSenderMessage>,
-    pub player: Option<Uuid>
+    pub player: Option<Uuid>,
 }
 
 #[derive(Clone)]
 pub struct PlayerConnectionPacketHandle {
     handler_channel: Sender<PacketHandlerMessage>,
-    sender_channel: Sender<PacketSenderMessage>
+    sender_channel: Sender<PacketSenderMessage>,
 }
 
 /*pub struct PlayerConnectionEncryption {
@@ -83,18 +83,22 @@ pub enum PlayerConnectionState {
     Handshake = 0,
     Status = 1,
     Login = 2,
-    Play = 3
+    Play = 3,
 }
 
 impl Display for PlayerConnectionState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         use PlayerConnectionState::*;
-        write!(f, "{}", match self {
-            Handshake => "Handshake",
-            Status => "Status",
-            Login => "Login",
-            Play => "Play"
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Handshake => "Handshake",
+                Status => "Status",
+                Login => "Login",
+                Play => "Play",
+            }
+        )
     }
 }
 
@@ -105,14 +109,20 @@ impl Hash for PlayerConnection {
 }
 
 impl PlayerConnection {
-    pub async fn new(server: Arc<Mutex<MinecraftServer>>, socket: TcpStream, addr: SocketAddr) -> Result<Self, Box<dyn Error>> {
-        let (handler_channel, sender_channel) = PacketHandler::create(socket, addr, server.clone()).await;
+    pub async fn new(
+        server: MinecraftServerHandle,
+        socket: TcpStream,
+        addr: SocketAddr,
+        encryption: Rsa<Private>,
+    ) -> Result<Self, Box<dyn Error>> {
+        let (handler_channel, sender_channel) =
+            PacketHandler::create(socket, addr, server.clone(), encryption).await;
         Ok(Self {
             address: addr.clone(),
             server: server,
             player: None,
             handler_channel,
-            sender_channel
+            sender_channel,
         })
     }
 
@@ -160,21 +170,29 @@ impl PlayerConnection {
 
 impl PlayerConnectionPacketHandle {
     pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
-        if let Err(e) = self.sender_channel.send(PacketSenderMessage::Packet(id, buffer)).await {
+        if let Err(e) = self
+            .sender_channel
+            .send(PacketSenderMessage::Packet(id, buffer))
+            .await
+        {
             return Err(format!("{}", e));
         };
         Ok(())
     }
     pub async fn close_channel(&mut self) -> Result<(), SendError<PacketHandlerMessage>> {
-        self.handler_channel.send(PacketHandlerMessage::CloseChannel).await
+        self.handler_channel
+            .send(PacketHandlerMessage::CloseChannel)
+            .await
     }
 }
 
-impl From<(Sender<PacketHandlerMessage>, Sender<PacketSenderMessage>)> for PlayerConnectionPacketHandle {
+impl From<(Sender<PacketHandlerMessage>, Sender<PacketSenderMessage>)>
+    for PlayerConnectionPacketHandle
+{
     fn from(from: (Sender<PacketHandlerMessage>, Sender<PacketSenderMessage>)) -> Self {
         Self {
             handler_channel: from.0,
-            sender_channel: from.1
+            sender_channel: from.1,
         }
     }
 }

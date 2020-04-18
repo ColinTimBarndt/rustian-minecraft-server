@@ -1,6 +1,6 @@
-use futures::lock::Mutex;
+#![recursion_limit = "256"]
+
 use std::error::Error;
-use std::sync::Arc;
 extern crate colorful;
 use colorful::Color;
 use colorful::Colorful;
@@ -14,15 +14,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     use server::*;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     println!("Creating Server");
-    let server = match MinecraftServer::new(SocketAddr::V4(SocketAddrV4::new(
+    let server = MinecraftServer::new(SocketAddr::V4(SocketAddrV4::new(
         Ipv4Addr::new(127, 0, 0, 1),
         25565,
     )))
-    .await
-    {
-        Ok(s) => s,
-        Err(e) => return Err(e),
-    };
+    .await?;
     println!(
         "{msg}{ip}",
         msg = "Server is up and running on "
@@ -30,10 +26,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .bold(),
         ip = server.address
     );
-    let server_thread_handle = tokio::spawn(MinecraftServer::listen(Arc::new(Mutex::new(server))));
+    let (server_handle, server_thread_handle) = MinecraftServer::listen(server);
     //chunk_test();
     // Let the server run
-    futures::join!(server_thread_handle).0?;
+    server_thread_handle.await;
     Ok(())
 }
 
