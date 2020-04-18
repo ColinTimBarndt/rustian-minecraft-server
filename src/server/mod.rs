@@ -1,22 +1,22 @@
+use crate::packet::PlayerConnection;
 use crate::server::universe::Player;
-use std::sync::{Arc};
-use futures::lock::{Mutex};
-use crate::packet::{PlayerConnection, PlayerConnectionPacketHandle};
-use std::error::Error;
-use std::net::{SocketAddr};
-use std::collections::HashMap;
-use tokio::net::{TcpListener, TcpStream};
-use openssl::rsa::Rsa;
+use futures::lock::Mutex;
 use openssl::pkey::Private;
+use openssl::rsa::Rsa;
+use std::collections::HashMap;
+use std::error::Error;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::net::{TcpListener, TcpStream};
 
 pub mod universe;
 
 pub struct MinecraftServer {
     pub address: SocketAddr,
     listener: TcpListener,
-    connections: HashMap<SocketAddr, PlayerConnectionPacketHandle>,
+    connections: HashMap<SocketAddr, PlayerConnection>,
     players: Vec<Player>,
-    pub key_pair: Rsa<Private>
+    pub key_pair: Rsa<Private>,
 }
 
 impl MinecraftServer {
@@ -30,18 +30,18 @@ impl MinecraftServer {
             listener: listener,
             connections: HashMap::new(),
             key_pair: private_key,
-            players: Vec::new()
+            players: Vec::new(),
         };
 
         println!("=== PUBLIC KEY ===");
         for byte in server.key_pair.public_key_to_der()? {
-            if byte<0x10 {
+            if byte < 0x10 {
                 print!("0{:X}", byte);
             } else {
                 print!("{:X}", byte);
             }
         }
-        println!("\n===");
+        println!("\n=== END PUBLIC KEY ===");
 
         return Ok(server);
     }
@@ -50,9 +50,7 @@ impl MinecraftServer {
         0
     }
 
-    pub async fn listen(
-        server_ref: Arc<Mutex<MinecraftServer>>
-    ) {
+    pub async fn listen(server_ref: Arc<Mutex<MinecraftServer>>) {
         /*tokio::run(self.listener.incoming()
             .map_err(|e| eprintln!("Failed to accept connection: {:?}", e))
             .for_each(|socket| {
@@ -72,24 +70,25 @@ impl MinecraftServer {
             let ref_clone = server_ref.clone();
             match handle_client(ref_clone, socket, addr).await {
                 Ok(()) => (),
-                Err(e) => println!("Severe error in new connection: {}", e)
+                Err(e) => println!("Severe error in new connection: {}", e),
             };
-            tokio::spawn(async move {
-
-            });
+            tokio::spawn(async move {});
             std::thread::sleep(std::time::Duration::from_millis(400));
         }
 
         async fn handle_client(
             server: Arc<Mutex<MinecraftServer>>,
             socket: TcpStream,
-            address: SocketAddr
+            address: SocketAddr,
         ) -> Result<(), String> {
             println!("Connection from {}", address);
-            let mut connection = match PlayerConnection::new(server.clone(), socket, address.clone()).await {
-                Ok(o) => o,
-                Err(e) => return Err(format!("{}", e))
-            };
+            let mut connection =
+                match PlayerConnection::new(server.clone(), socket, address.clone()).await {
+                    Ok(o) => o,
+                    Err(e) => return Err(format!("{}", e)),
+                };
+
+            println!("Connection handled");
 
             //let mut server_lock = server.lock().await;
             //let packet_queue = connection.outgoing_queue.clone();
@@ -114,5 +113,3 @@ impl MinecraftServer {
         }
     }
 }
-
-unsafe impl Send for MinecraftServer {}

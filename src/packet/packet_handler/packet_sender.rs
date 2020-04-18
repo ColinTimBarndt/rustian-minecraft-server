@@ -1,8 +1,8 @@
-use std::error::Error;
-use tokio::sync::mpsc::Receiver;
+use super::data;
 use openssl::symm::*;
+use std::error::Error;
 use tokio::io::AsyncWriteExt;
-use super::{data};
+use tokio::sync::mpsc::Receiver;
 
 // use tokio::net::tcp::WriteHalf;
 // type Writer = WriteHalf<'static>;
@@ -13,26 +13,23 @@ pub struct PacketSender {
     writer: Writer,
     receiver: Receiver<PacketSenderMessage>,
     encrypter: Option<Crypter>,
-    compression_threshold: Option<u32>
+    compression_threshold: Option<u32>,
 }
 
 #[derive(Debug)]
 pub enum PacketSenderMessage {
     Packet(u32, Vec<u8>),
     Encrypt(Vec<u8>),
-    Shutdown
+    Shutdown,
 }
 
 impl PacketSender {
-    pub fn new(
-        writer: Writer,
-        receiver: Receiver<PacketSenderMessage>
-    ) -> Self {
+    pub fn new(writer: Writer, receiver: Receiver<PacketSenderMessage>) -> Self {
         Self {
             writer,
             receiver,
             encrypter: None,
-            compression_threshold: None
+            compression_threshold: None,
         }
     }
     /// Listens for any outgoing packets that have to be sent
@@ -43,7 +40,7 @@ impl PacketSender {
                 Some(message) => match message {
                     Packet(packet_id, raw_packet) => match self.send(raw_packet, packet_id).await {
                         Ok(()) => (),
-                        Err(e) => eprintln!("Error in packet sender thread: {}", e)
+                        Err(e) => eprintln!("Error in packet sender thread: {}", e),
                     },
                     Encrypt(shared_secret) => self.set_encryption(&shared_secret),
                     Shutdown => {
@@ -51,7 +48,7 @@ impl PacketSender {
                         return self.writer;
                     }
                 },
-                None => panic!("Outgoing channel got dropped")
+                None => panic!("Outgoing channel got dropped"),
             };
         }
     }
@@ -59,10 +56,10 @@ impl PacketSender {
     pub async fn send(
         &mut self,
         mut packet_data: Vec<u8>,
-        packet_id: u32
+        packet_id: u32,
     ) -> Result<(), Box<dyn Error>> {
         let mut buffer = Vec::new();
-        let mut body_buffer = Vec::with_capacity(packet_data.len()+4);
+        let mut body_buffer = Vec::with_capacity(packet_data.len() + 4);
 
         // Compose body (id + packet)
         data::write::var_u32(&mut body_buffer, packet_id);
@@ -75,22 +72,22 @@ impl PacketSender {
         match &self.compression_threshold {
             Some(_t) => {
                 // Compress
-            },
-            None => ()
-        }
-
-        // Encryption
-        if self.encrypter.is_some() {
-            buffer = self.encrypt_vec(buffer);
+            }
+            None => (),
         }
 
         // Send packet
         //#[cfg(debug_sending_packets)]
         print!(
-            "{}: {} (no compression)\n -> ",
+            "{}: {:X} (no compression) ({})\n -> ",
             "Sending packet",
             //self.state,
-            packet_id
+            packet_id,
+            if self.encrypter.is_some() {
+                "encrypted"
+            } else {
+                "unencrypted"
+            }
         );
         for byte in &buffer {
             //#[cfg(debug_sending_packets)]
@@ -102,6 +99,12 @@ impl PacketSender {
                 }
             }
         }
+
+        // Encryption
+        if self.encrypter.is_some() {
+            buffer = self.encrypt_vec(buffer);
+        }
+
         //#[cfg(debug_sending_packets)]
         println!();
         self.writer.write(&buffer).await?;
@@ -113,14 +116,19 @@ impl PacketSender {
     }
     fn encrypt_byte(&mut self, byte: u8) -> u8 {
         let mut result = [0; 1];
-        match self.encrypter.as_mut().expect("Encryption is unset").update(&[byte], &mut result) {
+        match self
+            .encrypter
+            .as_mut()
+            .expect("Encryption is unset")
+            .update(&[byte], &mut result)
+        {
             Ok(amount) => {
                 assert_eq!(
                     amount, 1,
                     "This should not happen. Encrypted result is too short"
                 );
                 return result[0];
-            },
+            }
             Err(e) => {
                 panic!("Error when encrypting: {}", e);
             }
@@ -128,14 +136,20 @@ impl PacketSender {
     }
     fn encrypt_vec(&mut self, vec: Vec<u8>) -> Vec<u8> {
         let mut result = vec![0; vec.len()];
-        match self.encrypter.as_mut().expect("Encryption is unset").update(&vec, &mut result) {
+        match self
+            .encrypter
+            .as_mut()
+            .expect("Encryption is unset")
+            .update(&vec, &mut result)
+        {
             Ok(amount) => {
                 assert_eq!(
-                    amount, vec.len(),
+                    amount,
+                    vec.len(),
                     "This should not happen. Encrypted result is too short"
                 );
                 return result;
-            },
+            }
             Err(e) => {
                 panic!("Error when encrypting: {}", e);
             }

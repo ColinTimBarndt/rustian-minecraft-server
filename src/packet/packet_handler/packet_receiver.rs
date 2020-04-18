@@ -1,15 +1,11 @@
-use openssl::rsa::Rsa;
+use super::{data, PacketHandlerMessage, PacketSenderMessage, PlayerConnectionState};
+use futures::{future::FutureExt, pin_mut, select};
 use openssl::pkey::Private;
-use std::error::Error;
-use futures::{
-    future::FutureExt,
-    pin_mut,
-    select
-};
+use openssl::rsa::Rsa;
 use openssl::symm::*;
-use tokio::io::{AsyncReadExt};
-use tokio::sync::mpsc::{Sender, Receiver};
-use super::{PlayerConnectionState, PacketSenderMessage, PacketHandlerMessage, data};
+use std::error::Error;
+use tokio::io::AsyncReadExt;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 // use tokio::net::tcp::ReadHalf;
 // type Reader = /*ReadHalf<tokio::net::TcpStream>*/ReadHalf<'static>;
@@ -24,16 +20,16 @@ pub struct PacketReceiver {
     pub handler_channel: Sender<PacketHandlerMessage>,
     pub state: PlayerConnectionState,
     pub key: Option<Rsa<Private>>,
-    pub verify_token: Option<Vec<u8>>
+    pub verify_token: Option<Vec<u8>>,
 }
 
 macro_rules! handle_err {
-    ($expr:expr => $fmt:literal) => (
+    ($expr:expr => $fmt:literal) => {
         match $expr {
             Ok(o) => o,
-            Err(e) => return Err(format!($fmt, e))
+            Err(e) => return Err(format!($fmt, e)),
         }
-    );
+    };
 }
 
 impl PacketReceiver {
@@ -41,7 +37,7 @@ impl PacketReceiver {
         reader: Reader,
         packet_sender: Sender<PacketSenderMessage>,
         handler_channel: Sender<PacketHandlerMessage>,
-        key: Rsa<Private>
+        key: Rsa<Private>,
     ) -> Self {
         Self {
             reader: reader,
@@ -51,7 +47,7 @@ impl PacketReceiver {
             outgoing_channel: packet_sender,
             handler_channel,
             state: PlayerConnectionState::Handshake,
-            key: Some(key)
+            key: Some(key),
         }
     }
     /// Listens for any incoming packets
@@ -59,7 +55,7 @@ impl PacketReceiver {
         let cancel_task = cancel.recv().fuse();
         pin_mut!(cancel_task);
         loop {
-            select!{
+            select! {
                 r = self.handle_packet().fuse() => {
                     match r {
                         Ok(()) => (),
@@ -87,7 +83,7 @@ impl PacketReceiver {
     }
     /// Waits for an incoming packet and handles it
     async fn handle_packet(&mut self) -> Result<(), String> {
-        println!("Listening for next packet ...");
+        println!("[packet_receiver:86] Listening for next packet ...");
 
         let len = if self.decrypter.is_some() {
             handle_err!(read_enc_var_i32(self).await => "Error while reading packet length: {}")
@@ -107,9 +103,9 @@ impl PacketReceiver {
         }
 
         {
-            println!("Received packet!");
+            println!("[packet_receiver:106] Received packet!");
             for byte in &buffer {
-                if *byte<0x10 {
+                if *byte < 0x10 {
                     print!("0{:X}", byte);
                 } else {
                     print!("{:X}", byte);
@@ -128,15 +124,15 @@ impl PacketReceiver {
             let mut result: i32 = 0;
             loop {
                 let mut buf = [0u8; 1];
-                println!("Reading byte"); // DEBUG
+                println!("[packet_receiver:127] Reading byte"); // DEBUG
                 reader.read_exact(&mut buf).await?;
                 let read: u8 = buf[0];
                 let val = read & 0b01111111;
-                result |= (val as i32) << (7*num_read);
+                result |= (val as i32) << (7 * num_read);
 
-                num_read+=1;
+                num_read += 1;
                 if num_read > 5 {
-                    return Err(Box::new(PacketParsingError::VarNumberTooBig))
+                    return Err(Box::new(PacketParsingError::VarNumberTooBig));
                 }
                 if (read & 0b10000000) == 0 {
                     return Ok(result);
@@ -153,11 +149,11 @@ impl PacketReceiver {
                 receiver.reader.read_exact(&mut buf).await?;
                 let read: u8 = receiver.decrypt_byte(buf[0]);
                 let val = read & 0b01111111;
-                result |= (val as i32) << (7*num_read);
+                result |= (val as i32) << (7 * num_read);
 
-                num_read+=1;
+                num_read += 1;
                 if num_read > 5 {
-                    return Err(Box::new(PacketParsingError::VarNumberTooBig))
+                    return Err(Box::new(PacketParsingError::VarNumberTooBig));
                 }
                 if (read & 0b10000000) == 0 {
                     return Ok(result);
@@ -167,63 +163,81 @@ impl PacketReceiver {
     }
 
     /// Handles the raw, uncompressed binary data of a packet by deserializing and processing it
-    async fn handle_uncompressed_packet(&mut self, mut buffer: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    async fn handle_uncompressed_packet(
+        &mut self,
+        mut buffer: Vec<u8>,
+    ) -> Result<(), Box<dyn Error>> {
         let id = data::read::var_i32(&mut buffer)? as u32;
         #[cfg(debug_receiving_packets)]
-        print!("Packet {} {} received:\n -> ", self.state, id);
-        for byte in buffer.iter() {
+        print!(
+            "[packet_receiver:173] Packet {} {} received:\n -> ",
+            self.state, id
+        );
+        /*for byte in buffer.iter() {
             if *byte < 0x10 {
                 print!("0{:X}", byte);
             } else {
                 print!("{:X}", byte);
             }
-        }
+        }*/
         println!();
 
         use crate::packet;
         match self.state {
             PlayerConnectionState::Handshake => packet::handshake::handle(self, id, buffer).await,
-            PlayerConnectionState::Status    => packet::status   ::handle(self, id, buffer).await,
-            PlayerConnectionState::Login     => packet::login    ::handle(self, id, buffer).await,
-            PlayerConnectionState::Play      => packet::play     ::handle(self, id, buffer).await
+            PlayerConnectionState::Status => packet::status::handle(self, id, buffer).await,
+            PlayerConnectionState::Login => packet::login::handle(self, id, buffer).await,
+            PlayerConnectionState::Play => packet::play::handle(self, id, buffer).await,
         }
     }
     pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
-        if let Err(e) = self.outgoing_channel.send(PacketSenderMessage::Packet(id, buffer)).await {
+        if let Err(e) = self
+            .outgoing_channel
+            .send(PacketSenderMessage::Packet(id, buffer))
+            .await
+        {
             return Err(format!("{}", e));
         };
         Ok(())
     }
     pub async fn kick(&mut self, msg: String) -> Result<(), Box<dyn Error>> {
-        println!(
-            "Kicking: {}",
-            msg
-        );
+        println!("[packet_receiver:204] Kicking: {}", msg);
         use PlayerConnectionState::*;
         match self.state {
-            Login => crate::send_packet!(crate::packet::login::send::Disconnect::from(msg) => self.send_packet),
+            Login => {
+                crate::send_packet!(crate::packet::login::send::Disconnect::from(msg) => self.send_packet)
+            }
             Play => Ok(()), // TODO
-            _ => Ok(())
+            _ => Ok(()),
         }?;
-        self.handler_channel.send(PacketHandlerMessage::CloseChannel).await?;
+        self.handler_channel
+            .send(PacketHandlerMessage::CloseChannel)
+            .await?;
         Ok(())
     }
     pub async fn set_encryption(&mut self, secret: Vec<u8>) -> Result<(), Box<dyn Error>> {
         let cipher = Cipher::aes_128_cfb8();
         self.decrypter = Some(Crypter::new(cipher, Mode::Decrypt, &secret, Some(&secret)).unwrap());
-        self.outgoing_channel.send(PacketSenderMessage::Encrypt(secret)).await?;
+        self.outgoing_channel
+            .send(PacketSenderMessage::Encrypt(secret))
+            .await?;
         Ok(())
     }
     fn decrypt_byte(&mut self, byte: u8) -> u8 {
         let mut result = [0; 1];
-        match self.decrypter.as_mut().expect("Encryption is unset").update(&[byte], &mut result) {
+        match self
+            .decrypter
+            .as_mut()
+            .expect("Encryption is unset")
+            .update(&[byte], &mut result)
+        {
             Ok(amount) => {
                 assert_eq!(
                     amount, 1,
                     "This should not happen. Encrypted result is too short"
                 );
                 return result[0];
-            },
+            }
             Err(e) => {
                 panic!("Error when encrypting: {}", e);
             }
@@ -231,14 +245,20 @@ impl PacketReceiver {
     }
     fn decrypt_vec(&mut self, vec: Vec<u8>) -> Vec<u8> {
         let mut result = vec![0; vec.len()];
-        match self.decrypter.as_mut().expect("Encryption is unset").update(&vec, &mut result) {
+        match self
+            .decrypter
+            .as_mut()
+            .expect("Encryption is unset")
+            .update(&vec, &mut result)
+        {
             Ok(amount) => {
                 assert_eq!(
-                    amount, vec.len(),
+                    amount,
+                    vec.len(),
                     "This should not happen. Encrypted result is too short"
                 );
                 return result;
-            },
+            }
             Err(e) => {
                 panic!("Error when encrypting: {}", e);
             }
@@ -252,18 +272,18 @@ pub enum PacketParsingError {
     EndOfInput,
     VarNumberTooBig,
     InvalidPacket(String),
-    ConnectionClosed
+    ConnectionClosed,
 }
 
 impl std::fmt::Display for PacketParsingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         use PacketParsingError::*;
         match self {
-            UnknownPacket(id)   => write!(f, "Unknown packet {}", id),
-            EndOfInput          => write!(f, "Unexpected end of input"),
-            VarNumberTooBig     => write!(f, "Variable number is too big"),
+            UnknownPacket(id) => write!(f, "Unknown packet {}", id),
+            EndOfInput => write!(f, "Unexpected end of input"),
+            VarNumberTooBig => write!(f, "Variable number is too big"),
             InvalidPacket(desc) => write!(f, "Invalid Packet: {}", desc),
-            ConnectionClosed    => write!(f, "Connection Closed")
+            ConnectionClosed => write!(f, "Connection Closed"),
         }
     }
 }

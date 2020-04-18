@@ -4055,7 +4055,7 @@ impl Block {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GrassBlockData {
-	snowy: bool,
+	pub snowy: bool,
 }
 impl GrassBlockData {
 	pub fn from_offset(offset: usize) -> Option<Self> {
