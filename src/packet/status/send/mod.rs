@@ -1,16 +1,16 @@
-use crate::packet::{PacketSerialOut,data::write};
-use json::{JsonValue, object};
+use crate::packet::{data::write, PacketSerialOut};
+use json::{object, JsonValue};
 use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct Response {
-    pub status: ServerStatus
+    pub status: ServerStatus,
 }
 
 impl Response {
     pub fn new() -> Self {
         Self {
-            status: ServerStatus::new()
+            status: ServerStatus::new(),
         }
     }
 }
@@ -23,7 +23,7 @@ pub struct ServerStatus {
     pub online_players: u32,
     pub sample: Vec<(String, Uuid)>,
     pub description: String,
-    pub favicon: Option<String>
+    pub favicon: Option<String>,
 }
 
 impl ServerStatus {
@@ -34,23 +34,26 @@ impl ServerStatus {
             max_players: 20,
             online_players: 0,
             sample: Vec::new(),
-            description: format!("{0}A {1}Rust{0}ian Minecraft server", "\u{00A7}7", "\u{00A7}c"),
-            favicon: None
+            description: format!(
+                "{0}A {1}Rust{0}ian Minecraft server",
+                "\u{00A7}7", "\u{00A7}c"
+            ),
+            favicon: None,
         }
     }
 
     pub fn to_json(&self) -> JsonValue {
         let mut sample = JsonValue::new_array();
         for (name, uuid) in self.sample.iter() {
-            match sample.push(object!{
+            match sample.push(object! {
                 "name" => name.to_string(),
                 "id" => uuid.hyphenated().to_string()
             }) {
                 Ok(()) => (),
-                Err(e) => panic!("Will never happen: {}", e)
+                Err(e) => panic!("Will never happen: {}", e),
             };
         }
-        let mut obj = object!{
+        let mut obj = object! {
             "version" => object!{
                 "name" => self.version_name.to_string(),
                 "protocol" => self.protocol_version
@@ -65,13 +68,11 @@ impl ServerStatus {
             }
         };
         match &self.favicon {
-            Some(icon) => {
-                match obj.insert("favicon", icon.to_string()) {
-                    Ok(()) => (),
-                    Err(e) => panic!("Will never happen: {}", e)
-                }
+            Some(icon) => match obj.insert("favicon", icon.to_string()) {
+                Ok(()) => (),
+                Err(e) => panic!("Will never happen: {}", e),
             },
-            None => ()
+            None => (),
         };
         return obj;
     }
@@ -79,14 +80,12 @@ impl ServerStatus {
 
 #[derive(Debug)]
 pub struct Pong {
-    pub payload: u64
+    pub payload: u64,
 }
 
 impl Pong {
     pub fn new(payload: u64) -> Self {
-        Self {
-            payload: payload
-        }
+        Self { payload: payload }
     }
 }
 
@@ -95,7 +94,7 @@ impl PacketSerialOut for Response {
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
         let json = self.status.to_json();
         write::string(buffer, json.dump());
-        println!("{}", json.pretty(2));
+        //println!("{}", json.pretty(2));
         Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 use tokio::spawn;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -11,6 +12,7 @@ pub use packet_sender::*;
 #[derive(Debug)]
 pub enum PacketHandlerMessage {
     CloseChannel,
+    StopListening,
 }
 
 pub struct PacketHandler {
@@ -39,7 +41,7 @@ impl PacketHandler {
         stream: TcpStream,
         addr: SocketAddr,
         server: MinecraftServerHandle,
-        encryption: Rsa<Private>,
+        encryption: Arc<Rsa<Private>>,
     ) -> (Sender<PacketHandlerMessage>, Sender<PacketSenderMessage>) {
         let (sender, receiver) = channel(512);
         let (shutdown_sender, shutdown_receiver) = channel(1);
@@ -82,9 +84,12 @@ impl PacketHandler {
                                 };
                                 break 'HandlerChannelLoop;
                             }
+                            StopListening => {
+                                break 'HandlerChannelLoop;
+                            }
                         },
                         None => {
-                            //panic!("Handler channel got dropped");
+                            //println!("Handler channel got dropped");
                             break 'HandlerChannelLoop;
                         }
                     }
@@ -101,6 +106,10 @@ impl PacketHandler {
                     .unwrap_or_else(|err| {
                         panic!("Failed to shut down connection {}: {}", addr, err);
                     });
+                match me.server.player_disconnect(me.address).await {
+                    Ok(()) => (),
+                    Err(e) => eprintln!("Failed to dispatch player disconnect to server: {}", e),
+                }
             });
         }
         (handler_sender, sender)
@@ -121,10 +130,10 @@ impl PacketHandler {
             self.outgoing_channel.send(PacketSenderMessage::Shutdown)
         );
         if let Err(e) = r.0 {
-            return Err(format!("{}", e));
+            return Err(format!("Receiver Thread shutdown channel error: {}", e));
         }
         if let Err(e) = r.1 {
-            return Err(format!("{}", e));
+            return Err(format!("Sender Thread channel error: {}", e));
         }
         Ok(())
     }

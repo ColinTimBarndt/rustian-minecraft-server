@@ -6,6 +6,7 @@ use openssl::rsa::Rsa;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
 
@@ -16,7 +17,7 @@ pub struct MinecraftServer {
     listener: TcpListener,
     connections: HashMap<SocketAddr, PlayerConnection>,
     players: Vec<Player>,
-    pub key_pair: Rsa<Private>,
+    pub key_pair: Arc<Rsa<Private>>,
 }
 
 impl MinecraftServer {
@@ -25,16 +26,8 @@ impl MinecraftServer {
 
         let private_key = Rsa::generate(1024)?;
 
-        let server = MinecraftServer {
-            address: addr,
-            listener: listener,
-            connections: HashMap::new(),
-            key_pair: private_key,
-            players: Vec::new(),
-        };
-
         println!("=== PUBLIC KEY ===");
-        for byte in server.key_pair.public_key_to_der()? {
+        for byte in private_key.public_key_to_der()? {
             if byte < 0x10 {
                 print!("0{:X}", byte);
             } else {
@@ -42,6 +35,14 @@ impl MinecraftServer {
             }
         }
         println!("\n=== END PUBLIC KEY ===");
+
+        let server = MinecraftServer {
+            address: addr,
+            listener: listener,
+            connections: HashMap::new(),
+            key_pair: Arc::new(private_key),
+            players: Vec::new(),
+        };
 
         return Ok(server);
     }
@@ -89,7 +90,15 @@ impl MinecraftServer {
                         if let Some(msg) = msg_opt {
                             match msg {
                                 MinecraftServerHandleMessage::Shutdown => {
+                                    //TODO dispatch shutdown event to universe
+                                    println!("Shutting down server");
                                     return;
+                                }
+                                MinecraftServerHandleMessage::PlayerDisconnect(addr) => {
+                                    //TODO dispatch disconnect event to universe
+                                    println!("Disconnect from {}", addr);
+                                    server.connections.remove(&addr);
+                                    continue;
                                 }
                             }
                         }
@@ -102,16 +111,16 @@ impl MinecraftServer {
             server: MinecraftServerHandle,
             socket: TcpStream,
             address: SocketAddr,
-            encryption: Rsa<Private>,
+            encryption: Arc<Rsa<Private>>,
         ) -> Result<PlayerConnection, String> {
             println!("Connection from {}", address);
-            let mut connection =
+            let connection =
                 match PlayerConnection::new(server, socket, address.clone(), encryption).await {
                     Ok(o) => o,
                     Err(e) => return Err(format!("{}", e)),
                 };
 
-            println!("Connection handled");
+            println!("Connection handled for ip {}", address);
 
             //let mut server_lock = server.lock().await;
             //let packet_queue = connection.outgoing_queue.clone();
@@ -154,8 +163,18 @@ impl MinecraftServerHandle {
             .await?;
         Ok(())
     }
+    pub async fn player_disconnect(
+        &mut self,
+        addr: SocketAddr,
+    ) -> Result<(), SendError<MinecraftServerHandleMessage>> {
+        self.server_channel
+            .send(MinecraftServerHandleMessage::PlayerDisconnect(addr))
+            .await?;
+        Ok(())
+    }
 }
 
 pub enum MinecraftServerHandleMessage {
     Shutdown,
+    PlayerDisconnect(SocketAddr),
 }

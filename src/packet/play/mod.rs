@@ -1,15 +1,17 @@
 #![allow(unused)]
 
-pub mod send;
 pub mod receive;
+pub mod send;
 
+use crate::packet::{PacketParsingError, PacketReceiver, PacketSerialIn};
 use std::error::Error;
-use crate::packet::{PacketReceiver, PacketSerialIn, PacketParsingError};
+extern crate colorful;
+use colorful::{Color, Colorful};
 
 pub async fn handle(
     receiver: &mut PacketReceiver,
     id: u32,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
     println!("PACKET PLAY {}", id);
     match id {
@@ -25,21 +27,25 @@ pub async fn handle(
             let packet = PluginMessage::consume_read(buffer)?;
             println!(
                 "Plugin Message ({}): {}",
-                packet.channel,
-                String::from_utf8(packet.data.clone()).unwrap_or_else(|_| {
-                    packet.data.iter().map(|byte| {
-                        if *byte < 10 {
-                            format!("0{}", byte)
-                        } else {
-                            format!("{}", byte)
-                        }
-                    }).collect()
-                })
+                format!("{}", packet.channel).color(Color::Gold3b),
+                String::from_utf8(packet.data.clone())
+                    .unwrap_or_else(|_| {
+                        packet
+                            .data
+                            .iter()
+                            .map(|byte| {
+                                if *byte < 10 {
+                                    format!("0{}", byte)
+                                } else {
+                                    format!("{}", byte)
+                                }
+                            })
+                            .collect()
+                    })
+                    .color(Color::LightGray)
             );
-        },
-        _ => return Err(Box::new(
-            PacketParsingError::UnknownPacket(id)
-        ))
+        }
+        _ => return Err(Box::new(PacketParsingError::UnknownPacket(id))),
     }
     Ok(())
 }

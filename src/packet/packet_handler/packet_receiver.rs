@@ -4,8 +4,11 @@ use openssl::pkey::Private;
 use openssl::rsa::Rsa;
 use openssl::symm::*;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::{Receiver, Sender};
+extern crate colorful;
+use colorful::{Color, Colorful};
 
 // use tokio::net::tcp::ReadHalf;
 // type Reader = /*ReadHalf<tokio::net::TcpStream>*/ReadHalf<'static>;
@@ -19,7 +22,7 @@ pub struct PacketReceiver {
     outgoing_channel: Sender<PacketSenderMessage>,
     pub handler_channel: Sender<PacketHandlerMessage>,
     pub state: PlayerConnectionState,
-    pub key: Option<Rsa<Private>>,
+    pub key: Option<Arc<Rsa<Private>>>,
     pub verify_token: Option<Vec<u8>>,
 }
 
@@ -37,7 +40,7 @@ impl PacketReceiver {
         reader: Reader,
         packet_sender: Sender<PacketSenderMessage>,
         handler_channel: Sender<PacketHandlerMessage>,
-        key: Rsa<Private>,
+        key: Arc<Rsa<Private>>,
     ) -> Self {
         Self {
             reader: reader,
@@ -64,6 +67,8 @@ impl PacketReceiver {
 
                             self.outgoing_channel.send(PacketSenderMessage::Shutdown).await
                             .expect("Failed to shut down sending channel");
+                            self.handler_channel.send(PacketHandlerMessage::StopListening).await
+                            .expect("Failed to notify packet handler");
                             return self.reader;
 
                             //self.handler.lock().await.close_channel().await;
@@ -83,7 +88,7 @@ impl PacketReceiver {
     }
     /// Waits for an incoming packet and handles it
     async fn handle_packet(&mut self) -> Result<(), String> {
-        println!("[packet_receiver:86] Listening for next packet ...");
+        //println!("[packet_receiver:86] Listening for next packet ...");
 
         let len = if self.decrypter.is_some() {
             handle_err!(read_enc_var_i32(self).await => "Error while reading packet length: {}")
@@ -103,15 +108,15 @@ impl PacketReceiver {
         }
 
         {
-            println!("[packet_receiver:106] Received packet!");
-            for byte in &buffer {
+            //println!("[packet_receiver:106] Received packet!");
+            /*for byte in &buffer {
                 if *byte < 0x10 {
                     print!("0{:X}", byte);
                 } else {
                     print!("{:X}", byte);
                 }
             }
-            println!();
+            println!();*/
         }
 
         handle_err!(self.handle_uncompressed_packet(buffer).await => "Error while processing packet: {}");
@@ -124,7 +129,7 @@ impl PacketReceiver {
             let mut result: i32 = 0;
             loop {
                 let mut buf = [0u8; 1];
-                println!("[packet_receiver:127] Reading byte"); // DEBUG
+                //println!("[packet_receiver:127] Reading byte"); // DEBUG
                 reader.read_exact(&mut buf).await?;
                 let read: u8 = buf[0];
                 let val = read & 0b01111111;
@@ -168,11 +173,11 @@ impl PacketReceiver {
         mut buffer: Vec<u8>,
     ) -> Result<(), Box<dyn Error>> {
         let id = data::read::var_i32(&mut buffer)? as u32;
-        #[cfg(debug_receiving_packets)]
+        /*#[cfg(debug_receiving_packets)]
         print!(
             "[packet_receiver:173] Packet {} {} received:\n -> ",
             self.state, id
-        );
+        );*/
         /*for byte in buffer.iter() {
             if *byte < 0x10 {
                 print!("0{:X}", byte);
@@ -180,7 +185,22 @@ impl PacketReceiver {
                 print!("{:X}", byte);
             }
         }*/
-        println!();
+        println!(
+            "{}: {} ({}) {}",
+            "◀ Received packet".color(Color::DarkGray),
+            //self.state,
+            format!("{}::{:X}", self.state, id),
+            if self.compression_threshold.is_some() {
+                "compressed".color(Color::DarkMagenta1)
+            } else {
+                "no compression".color(Color::BlueViolet)
+            },
+            if self.decrypter.is_some() {
+                format!("🔐{}", "▮".color(Color::DarkGreen))
+            } else {
+                format!("🔓{}", "▮".color(Color::DarkOrange))
+            }
+        );
 
         use crate::packet;
         match self.state {

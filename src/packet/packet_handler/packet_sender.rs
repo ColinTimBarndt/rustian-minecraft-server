@@ -3,6 +3,9 @@ use openssl::symm::*;
 use std::error::Error;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::Receiver;
+extern crate colorful;
+use colorful::Color;
+use colorful::Colorful;
 
 // use tokio::net::tcp::WriteHalf;
 // type Writer = WriteHalf<'static>;
@@ -40,11 +43,14 @@ impl PacketSender {
                 Some(message) => match message {
                     Packet(packet_id, raw_packet) => match self.send(raw_packet, packet_id).await {
                         Ok(()) => (),
-                        Err(e) => eprintln!("Error in packet sender thread: {}", e),
+                        Err(e) => eprintln!(
+                            "{}: {}",
+                            "Error in packet sender thread".color(Color::Red),
+                            e
+                        ),
                     },
                     Encrypt(shared_secret) => self.set_encryption(&shared_secret),
                     Shutdown => {
-                        //self.writer.as_ref().shutdown(std::net::Shutdown::Write);
                         return self.writer;
                     }
                 },
@@ -78,18 +84,23 @@ impl PacketSender {
 
         // Send packet
         //#[cfg(debug_sending_packets)]
-        print!(
-            "{}: {:X} (no compression) ({})\n -> ",
-            "Sending packet",
+        println!(
+            "{}: {:X} ({}) {}",
+            "▶ Sending packet".color(Color::DarkGray),
             //self.state,
             packet_id,
-            if self.encrypter.is_some() {
-                "encrypted"
+            if self.compression_threshold.is_some() {
+                "compressed".color(Color::DarkMagenta1)
             } else {
-                "unencrypted"
+                "no compression".color(Color::BlueViolet)
+            },
+            if self.encrypter.is_some() {
+                format!("🔐{}", "▮".color(Color::DarkGreen))
+            } else {
+                format!("🔓{}", "▮".color(Color::DarkOrange))
             }
         );
-        for byte in &buffer {
+        /*for byte in &buffer {
             //#[cfg(debug_sending_packets)]
             {
                 if *byte < 0x10 {
@@ -98,7 +109,7 @@ impl PacketSender {
                     print!("{:X}", byte);
                 }
             }
-        }
+        }*/
 
         // Encryption
         if self.encrypter.is_some() {
@@ -106,7 +117,7 @@ impl PacketSender {
         }
 
         //#[cfg(debug_sending_packets)]
-        println!();
+        //println!();
         self.writer.write(&buffer).await?;
         Ok(())
     }
@@ -114,6 +125,7 @@ impl PacketSender {
         let cipher = Cipher::aes_128_cfb8();
         self.encrypter = Some(Crypter::new(cipher, Mode::Encrypt, secret, Some(secret)).unwrap())
     }
+    #[allow(dead_code)]
     fn encrypt_byte(&mut self, byte: u8) -> u8 {
         let mut result = [0; 1];
         match self

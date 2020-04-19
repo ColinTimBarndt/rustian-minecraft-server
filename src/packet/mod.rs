@@ -8,6 +8,7 @@ use openssl::rsa::Rsa;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
@@ -113,7 +114,7 @@ impl PlayerConnection {
         server: MinecraftServerHandle,
         socket: TcpStream,
         addr: SocketAddr,
-        encryption: Rsa<Private>,
+        encryption: Arc<Rsa<Private>>,
     ) -> Result<Self, Box<dyn Error>> {
         let (handler_channel, sender_channel) =
             PacketHandler::create(socket, addr, server.clone(), encryption).await;
