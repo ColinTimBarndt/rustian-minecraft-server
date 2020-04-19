@@ -1,9 +1,11 @@
 #![recursion_limit = "256"]
 
-use std::error::Error;
-extern crate colorful;
 use colorful::Color;
 use colorful::Colorful;
+use std::error::Error;
+extern crate colorful;
+#[macro_use]
+extern crate lazy_static;
 
 pub mod helpers;
 pub mod packet;

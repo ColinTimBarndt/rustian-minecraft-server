@@ -65,10 +65,13 @@ impl PacketReceiver {
                         Err(e) => {
                             eprintln!("Error in packet receiver thread: {}", e);
 
-                            self.outgoing_channel.send(PacketSenderMessage::Shutdown).await
-                            .expect("Failed to shut down sending channel");
-                            self.handler_channel.send(PacketHandlerMessage::StopListening).await
-                            .expect("Failed to notify packet handler");
+                            let r = futures::join!(
+                                self.outgoing_channel.send(PacketSenderMessage::Shutdown),
+                                self.handler_channel.send(PacketHandlerMessage::StopListening)
+                            );
+
+                            r.0.expect("Failed to shut down sending channel");
+                            r.1.expect("Failed to notify packet handler");
                             return self.reader;
 
                             //self.handler.lock().await.close_channel().await;
@@ -196,9 +199,11 @@ impl PacketReceiver {
                 "no compression".color(Color::BlueViolet)
             },
             if self.decrypter.is_some() {
-                format!("🔐{}", "▮".color(Color::DarkGreen))
+                //format!("🔐{}", "▮".color(Color::DarkGreen))
+                "🔐"
             } else {
-                format!("🔓{}", "▮".color(Color::DarkOrange))
+                //format!("🔓{}", "▮".color(Color::DarkOrange))
+                "🔓"
             }
         );
 

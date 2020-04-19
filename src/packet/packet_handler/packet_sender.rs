@@ -95,9 +95,11 @@ impl PacketSender {
                 "no compression".color(Color::BlueViolet)
             },
             if self.encrypter.is_some() {
-                format!("🔐{}", "▮".color(Color::DarkGreen))
+                //format!("🔐{}", "▮".color(Color::DarkGreen))
+                "🔐"
             } else {
-                format!("🔓{}", "▮".color(Color::DarkOrange))
+                //format!("🔓{}", "▮".color(Color::DarkOrange))
+                "🔓"
             }
         );
         /*for byte in &buffer {
