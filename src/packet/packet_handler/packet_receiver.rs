@@ -91,9 +91,9 @@ impl PacketReceiver {
         //println!("[packet_receiver:86] Listening for next packet ...");
 
         let len = if self.decrypter.is_some() {
-            handle_err!(read_enc_var_i32(self).await => "Error while reading packet length: {}")
+            handle_err!(read_enc_var_i32(self).await => "Error while reading encrypted packet length: {}")
         } else {
-            handle_err!(read_var_i32(&mut self.reader).await => "Error while reading encrypted packet length: {}")
+            handle_err!(read_var_i32(&mut self.reader).await => "Error while reading packet length: {}")
         } as usize;
         let mut buffer: Vec<u8> = Vec::with_capacity(len);
 
