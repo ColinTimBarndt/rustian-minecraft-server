@@ -57,6 +57,8 @@ impl PacketReceiver {
     pub async fn listen(mut self, mut cancel: Receiver<()>) -> Reader {
         let cancel_task = cancel.recv().fuse();
         pin_mut!(cancel_task);
+        // This loop processes all packets to be sent
+        // The sending future is cancelled in case a cancel message is received
         loop {
             select! {
                 r = self.handle_packet().fuse() => {
@@ -127,6 +129,8 @@ impl PacketReceiver {
         return Ok(());
 
         #[inline]
+        // Read a VarInt packet data type
+        // See https://wiki.vg/Protocol#Data_types
         async fn read_var_i32(reader: &mut Reader) -> Result<i32, Box<dyn Error>> {
             let mut num_read = 0u32;
             let mut result: i32 = 0;
@@ -149,6 +153,8 @@ impl PacketReceiver {
         }
 
         #[inline]
+        // Read a VarInt packet data type (encrypted)
+        // See https://wiki.vg/Protocol#Data_types
         async fn read_enc_var_i32(receiver: &mut PacketReceiver) -> Result<i32, Box<dyn Error>> {
             let mut num_read = 0u32;
             let mut result: i32 = 0;
@@ -225,6 +231,7 @@ impl PacketReceiver {
         };
         Ok(())
     }
+    /// Send the correct kick packet and close the connection
     pub async fn kick(&mut self, msg: String) -> Result<(), Box<dyn Error>> {
         println!("[packet_receiver:204] Kicking: {}", msg);
         use PlayerConnectionState::*;
@@ -240,6 +247,7 @@ impl PacketReceiver {
             .await?;
         Ok(())
     }
+    /// Activates encryption on the receiving and sending side of the connection
     pub async fn set_encryption(&mut self, secret: Vec<u8>) -> Result<(), Box<dyn Error>> {
         let cipher = Cipher::aes_128_cfb8();
         self.decrypter = Some(Crypter::new(cipher, Mode::Decrypt, &secret, Some(&secret)).unwrap());
@@ -248,6 +256,7 @@ impl PacketReceiver {
             .await?;
         Ok(())
     }
+    /// Decrypts one byte of data
     fn decrypt_byte(&mut self, byte: u8) -> u8 {
         let mut result = [0; 1];
         match self
@@ -268,6 +277,7 @@ impl PacketReceiver {
             }
         };
     }
+    /// Decrypts multiple bytes of data
     fn decrypt_vec(&mut self, vec: Vec<u8>) -> Vec<u8> {
         let mut result = vec![0; vec.len()];
         match self

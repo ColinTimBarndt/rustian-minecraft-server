@@ -123,11 +123,13 @@ impl PacketSender {
         self.writer.write(&buffer).await?;
         Ok(())
     }
+    /// Activates encryption (only!) on the sending side
     pub fn set_encryption(&mut self, secret: &[u8]) {
         let cipher = Cipher::aes_128_cfb8();
         self.encrypter = Some(Crypter::new(cipher, Mode::Encrypt, secret, Some(secret)).unwrap())
     }
     #[allow(dead_code)]
+    /// Encrypts one byte of data
     fn encrypt_byte(&mut self, byte: u8) -> u8 {
         let mut result = [0; 1];
         match self
@@ -148,6 +150,7 @@ impl PacketSender {
             }
         };
     }
+    /// Encrypts multiple bytes of data
     fn encrypt_vec(&mut self, vec: Vec<u8>) -> Vec<u8> {
         let mut result = vec![0; vec.len()];
         match self
