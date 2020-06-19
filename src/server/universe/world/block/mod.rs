@@ -1,11 +1,11 @@
 #![allow(unused)]
 use std::collections::HashMap;
-extern crate micromath;
 extern crate lazy_static;
-use std::ops;
+extern crate micromath;
 use micromath::vector::{F32x3, I32x3};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use std::ops;
 
 pub mod blocks;
 
@@ -192,7 +192,7 @@ macro_rules! register_colors {
     );
 }
 
-register_colors!{
+register_colors! {
     0  0x000000 Black;//b
     1  0x7fb238 GrassGreen;//c
     2  0xf7e9a3 CreamYellow;//d

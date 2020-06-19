@@ -1,0 +1,4 @@
+{
+  "blocks.rs": "server/universe/world/blocks.rs",
+  "registries.rs": "server/registries.rs"
+}

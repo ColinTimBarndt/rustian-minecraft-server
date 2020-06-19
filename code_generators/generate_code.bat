@@ -1,2 +1,4 @@
-node .\code\blocks.js
-copy .\generated_code\blocks.rs ..\src\server\universe\world\block\blocks.rs
+cd .\code
+node .\blocks.js
+node .\registries.js
+node .\insert_files.js

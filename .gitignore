@@ -1,3 +1,8 @@
+/.git
+**/*.lnk
 /target
-**/*.rs.bk
-Cargo.lock
+/code_generators/generated
+/code_generators/generated_code
+**/*.jar
+**/*.log
+**/*.log.gz
