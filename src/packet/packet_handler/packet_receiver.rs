@@ -232,14 +232,22 @@ impl PacketReceiver {
         Ok(())
     }
     /// Send the correct kick packet and close the connection
-    pub async fn kick(&mut self, msg: String) -> Result<(), Box<dyn Error>> {
-        println!("[packet_receiver:204] Kicking: {}", msg);
+    pub async fn kick(
+        &mut self,
+        msg: crate::helpers::chat_components::ChatComponent,
+    ) -> Result<(), Box<dyn Error>> {
+        println!(
+            "[packet_receiver:204] Kicking: {}",
+            json::stringify(msg.make_json())
+        );
         use PlayerConnectionState::*;
         match self.state {
             Login => {
                 crate::send_packet!(crate::packet::login::send::Disconnect::from(msg) => self.send_packet)
             }
-            Play => Ok(()), // TODO
+            Play => {
+                crate::send_packet!(crate::packet::play::send::Disconnect::from(msg) => self.send_packet)
+            }
             _ => Ok(()),
         }?;
         self.handler_channel

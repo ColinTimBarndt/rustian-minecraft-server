@@ -13,7 +13,6 @@ pub async fn handle(
     id: u32,
     buffer: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
-    println!("PACKET STATUS {}", id);
     match id {
         receive::Request::ID => {
             // Handle server status request

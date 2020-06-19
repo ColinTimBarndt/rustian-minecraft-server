@@ -8,7 +8,6 @@ pub async fn handle(
     id: u32,
     buffer: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
-    println!("PACKET HANDSHAKE {}", id);
     match id {
         receive::Handshake::ID => {
             // Handle handshake

@@ -13,7 +13,6 @@ pub async fn handle(
     id: u32,
     buffer: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
-    println!("PACKET LOGIN {}", id);
     match id {
         receive::LoginStart::ID => {
             // Handle Login request

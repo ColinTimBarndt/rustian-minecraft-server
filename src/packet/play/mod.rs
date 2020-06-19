@@ -13,7 +13,6 @@ pub async fn handle(
     id: u32,
     buffer: Vec<u8>,
 ) -> Result<(), Box<dyn Error>> {
-    println!("PACKET PLAY {}", id);
     match id {
         receive::ClientSettings::ID => {
             use receive::ClientSettings;
@@ -44,6 +43,16 @@ pub async fn handle(
                     })
                     .color(Color::LightGray)
             );
+            println!("[play/mod.rs] Kicking user");
+            use crate::helpers::chat_components::{ChatColor, ChatComponent, ChatComponentType};
+            receiver
+                .kick(
+                    ChatComponent::new(ChatComponentType::Text(
+                        "Server is not ready yet".to_string(),
+                    ))
+                    .set_color(ChatColor::DarkAqua),
+                )
+                .await?;
         }
         _ => return Err(Box::new(PacketParsingError::UnknownPacket(id))),
     }
