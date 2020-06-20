@@ -1,7 +1,11 @@
 use crate::helpers::chat_components::{ChatComponent, ChatComponentType};
 use crate::packet::{data::write, PacketSerialOut};
 
+/// # Disconnect (play)
 /// [Documentation](https://wiki.vg/Protocol#Disconnect_.28play.29)
+///
+/// Sent by the server before it disconnects a client. The client assumes
+/// that the server has already closed the connection by the time the packet arrives.
 #[derive(Debug, Clone)]
 pub struct Disconnect {
   pub reason: ChatComponent,

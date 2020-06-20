@@ -1,7 +1,17 @@
 use super::super::receive;
 use crate::packet::{data::write, PacketSerialOut};
 
+/// # Keep Alive (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Keep_Alive_.28clientbound.29)
+///
+/// The server will frequently send out a keep-alive, each containing a random ID.
+/// The client must respond with the same packet. If the client does not respond to
+/// them for over 30 seconds, the server kicks the client. Vice versa, if the server
+/// does not send any keep-alives for 20 seconds, the client will disconnect and
+/// yields a "Timed out" exception.
+///
+/// The Notchian server uses a system-dependent time in milliseconds to generate the
+/// keep alive ID value.
 #[derive(Clone, Debug)]
 pub struct KeepAlive {
   pub keep_alive_id: u64,

@@ -5,7 +5,12 @@ use std::mem;
 extern crate nbt;
 use nbt::Value;
 
+/// # Chunk Data
 /// [Documentation](https://wiki.vg/Protocol#Chunk_Data)
+///
+/// _Main article: [Chunk Format](https://wiki.vg/Chunk_Format)_
+///
+/// _See also: [#Unload Chunk](https://wiki.vg/Protocol#Unload_Chunk), [`crate::packet::play::send::UnloadChunk`]_
 #[derive(Clone)]
 pub struct ChunkData {
   pub chunk_position: ChunkPosition,

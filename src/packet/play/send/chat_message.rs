@@ -2,7 +2,13 @@ use crate::helpers::chat_components::ChatComponent;
 use crate::packet::{data::write, PacketSerialOut};
 use json::JsonValue;
 
+/// # Chat Message (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Chat_Message_.28clientbound.29)
+///
+/// Identifying the difference between Chat/System Message is important as it
+/// helps respect the user's chat visibility options. See
+/// [processing chat](https://wiki.vg/Chat#Processing_chat) for more info about
+/// these positions.
 #[derive(Clone, Debug)]
 pub struct ChatMessage {
   pub message: Vec<ChatComponent>,

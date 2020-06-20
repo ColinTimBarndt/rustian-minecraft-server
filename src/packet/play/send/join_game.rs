@@ -1,6 +1,13 @@
-use crate::packet::{PacketSerialOut, data::write};
-use crate::server::universe::{Gamemode, world::{Dimension, LevelType}};
+use crate::packet::{data::write, PacketSerialOut};
+use crate::server::universe::{
+    world::{Dimension, LevelType},
+    Gamemode,
+};
 
+/// # Join Game
+/// [Documentation](https://wiki.vg/Protocol#Join_Game)
+///
+/// See [Protocol Encryption](https://wiki.vg/Protocol_Encryption) for information on logging in.
 pub struct JoinGame {
     pub entity_id: u32,
     pub gamemode: Gamemode,
@@ -9,7 +16,7 @@ pub struct JoinGame {
     pub level_type: LevelType,
     pub view_distance: u32,
     pub reduced_debug_info: bool,
-    pub show_respawn_screen: bool
+    pub show_respawn_screen: bool,
 }
 
 impl PacketSerialOut for JoinGame {

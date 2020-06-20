@@ -1,6 +1,13 @@
 use crate::helpers::NamespacedKey;
 use crate::packet::{data::write, PacketSerialOut};
 
+/// # Plugin Message (clientbound)
+/// [Documentation](https://wiki.vg/Protocol#Plugin_Message_.28clientbound.29)
+///
+/// Mods and plugins can use this to send their data. Minecraft itself uses several plugin channels.
+/// These internal channels are in the minecraft namespace.
+///
+/// More documentation on this: <http://dinnerbone.com/blog/2012/01/13/minecraft-plugin-channels-messaging/>
 pub struct PluginMessage {
     pub channel: NamespacedKey,
     pub data: Vec<u8>,
