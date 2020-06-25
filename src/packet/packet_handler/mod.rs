@@ -24,13 +24,13 @@ pub struct PacketHandler {
 
 #[macro_export]
 macro_rules! send_packet {
-    ($packet:expr => $var:ident . $sender:ident) => {{
+    ($packet:expr => $var:ident $(. $sender:ident)*) => {{
         use crate::packet::PacketSerialOut;
         let packet = $packet;
         let id = crate::packet::get_packet_id_out(&packet);
         let mut buffer = Vec::new();
         match packet.consume_write(&mut buffer) {
-            Ok(()) => $var.$sender(id, buffer).await,
+            Ok(()) => $var $(. $sender(id, buffer))* .await,
             Err(e) => Err(format!("{}", e)),
         }
     }};
