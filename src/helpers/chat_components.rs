@@ -47,7 +47,8 @@ impl ChatComponentType {
                     obj.insert(
                         "with",
                         JsonValue::Array(with.iter().map(|cmp| cmp.make_json()).collect()),
-                    );
+                    )
+                    .unwrap();
                 }
             }
             Score {
@@ -117,22 +118,24 @@ pub mod keybinds {
 /// See the [Minecraft Wiki](https://minecraft.gamepedia.com/Formatting_codes#Color_codes)
 #[derive(Debug, Clone, Copy)]
 pub enum ChatColor {
-    Black = 0x0,
-    DarkBlue = 0x1,
-    DarkGreen = 0x2,
-    DarkAqua = 0x3,
-    DarkRed = 0x4,
-    DarkPurple = 0x5,
-    Gold = 0x6,
-    Gray = 0x7,
-    DarkGray = 0x8,
-    Blue = 0x9,
-    Green = 0xa,
-    Aqua = 0xb,
-    Red = 0xc,
-    LightPurple = 0xd,
-    Yellow = 0xe,
-    White = 0xf,
+    Black,
+    DarkBlue,
+    DarkGreen,
+    DarkAqua,
+    DarkRed,
+    DarkPurple,
+    Gold,
+    Gray,
+    DarkGray,
+    Blue,
+    Green,
+    Aqua,
+    Red,
+    LightPurple,
+    Yellow,
+    White,
+    /// Implemented for Minecraft 1.16 and above
+    Custom(super::Color),
 }
 impl From<ChatColor> for String {
     fn from(color: ChatColor) -> Self {
@@ -154,6 +157,7 @@ impl From<ChatColor> for String {
             LightPurple => "light_purple",
             Yellow => "yellow",
             White => "white",
+            Custom(color) => return color.to_hex_code(),
         }
         .to_string()
     }

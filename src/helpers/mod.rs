@@ -1,8 +1,13 @@
 mod bit_array;
 pub mod chat_components;
+mod color;
 mod namespaced_key;
 mod nibble_array;
+mod registry;
 mod vector;
 pub use bit_array::*;
-pub use namespaced_key::*;pub use nibble_array::*;
+pub use color::*;
+pub use namespaced_key::*;
+pub use nibble_array::*;
+pub use registry::*;
 pub use vector::*;

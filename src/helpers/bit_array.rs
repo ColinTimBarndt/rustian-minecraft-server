@@ -1,3 +1,4 @@
+/// This structure is able to store numbers with a specified custom bit-count
 #[derive(Clone, Debug)]
 pub struct BitArray {
     len: usize,
@@ -34,6 +35,9 @@ impl BitArray {
     }
     pub fn len(&self) -> usize {
         self.len
+    }
+    pub fn bits_per_item(&self) -> u8 {
+        self.item_width
     }
     pub fn get(&self, index: usize) -> u64 {
         assert!(index < self.len, "Index out of bounds");
@@ -114,6 +118,12 @@ impl BitArray {
         }
 
         Ok(new_arr)
+    }
+}
+
+impl From<BitArray> for Vec<u64> {
+    fn from(bit_array: BitArray) -> Self {
+        bit_array.data
     }
 }
 
