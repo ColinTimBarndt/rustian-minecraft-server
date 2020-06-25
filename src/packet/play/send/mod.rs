@@ -24,3 +24,18 @@ pub use chat_message::*;
 
 mod chunk_data;
 pub use chunk_data::*;
+
+mod held_item_change;
+pub use held_item_change::*;
+
+mod declare_recipes;
+pub use declare_recipes::*;
+
+mod tags;
+pub use tags::*;
+
+pub mod entity_status;
+pub use entity_status::*;
+
+mod declare_commands;
+pub use declare_commands::*;
