@@ -1,4 +1,5 @@
 use super::{data, PacketHandlerMessage, PacketSenderMessage, PlayerConnectionState};
+use crate::server::universe::SharedPlayer;
 use futures::{future::FutureExt, pin_mut, select};
 use openssl::pkey::Private;
 use openssl::rsa::Rsa;
@@ -24,6 +25,9 @@ pub struct PacketReceiver {
     pub state: PlayerConnectionState,
     pub key: Option<Arc<Rsa<Private>>>,
     pub verify_token: Option<Vec<u8>>,
+    pub login_name: Option<String>,
+    pub player: Option<SharedPlayer>,
+    pub logging_in: bool,
 }
 
 macro_rules! handle_err {
@@ -51,6 +55,9 @@ impl PacketReceiver {
             handler_channel,
             state: PlayerConnectionState::Handshake,
             key: Some(key),
+            login_name: None,
+            player: None,
+            logging_in: true,
         }
     }
     /// Listens for any incoming packets
@@ -198,7 +205,7 @@ impl PacketReceiver {
             "{}: {} ({}) {}",
             "◀ Received packet".color(Color::DarkGray),
             //self.state,
-            format!("{}::{:X}", self.state, id),
+            format!("{}::{:#04X}", self.state, id),
             if self.compression_threshold.is_some() {
                 "compressed".color(Color::DarkMagenta1)
             } else {
@@ -221,6 +228,8 @@ impl PacketReceiver {
             PlayerConnectionState::Play => packet::play::handle(self, id, buffer).await,
         }
     }
+
+    /// Sends a packet
     pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
         if let Err(e) = self
             .outgoing_channel
@@ -231,6 +240,16 @@ impl PacketReceiver {
         };
         Ok(())
     }
+
+    /// Clones the packet sender channel
+    pub fn clone_packet_sender(&self) -> Sender<PacketSenderMessage> {
+        self.outgoing_channel.clone()
+    }
+
+    pub fn create_player_connection_handle(&self) -> super::PlayerConnectionPacketHandle {
+        (self.handler_channel.clone(), self.outgoing_channel.clone()).into()
+    }
+
     /// Send the correct kick packet and close the connection
     pub async fn kick(
         &mut self,
@@ -322,7 +341,7 @@ impl std::fmt::Display for PacketParsingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         use PacketParsingError::*;
         match self {
-            UnknownPacket(id) => write!(f, "Unknown packet {}", id),
+            UnknownPacket(id) => write!(f, "Unknown packet {:02X}", id),
             EndOfInput => write!(f, "Unexpected end of input"),
             VarNumberTooBig => write!(f, "Variable number is too big"),
             InvalidPacket(desc) => write!(f, "Invalid Packet: {}", desc),

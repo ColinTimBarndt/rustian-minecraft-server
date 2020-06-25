@@ -2,7 +2,7 @@ use super::data;
 use openssl::symm::*;
 use std::error::Error;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 extern crate colorful;
 use colorful::Color;
 use colorful::Colorful;
@@ -21,8 +21,16 @@ pub struct PacketSender {
 
 #[derive(Debug)]
 pub enum PacketSenderMessage {
+    /// Tell the packet sender thread to send a packet
     Packet(u32, Vec<u8>),
+    /// Tell the packet sender thread to send a packet
+    PacketBox(u32, Box<Vec<u8>>),
+    /// Tell the sender thread to enable encryption with
+    /// the given shared secret
     Encrypt(Vec<u8>),
+    /// Tell the sender thread to immediately shut down
+    /// and return the TCP stream write half back to
+    /// the packet handler thread
     Shutdown,
 }
 
@@ -49,6 +57,16 @@ impl PacketSender {
                             e
                         ),
                     },
+                    PacketBox(packet_id, raw_packet) => {
+                        match self.send(*raw_packet, packet_id).await {
+                            Ok(()) => (),
+                            Err(e) => eprintln!(
+                                "{}: {}",
+                                "Error in packet sender thread".color(Color::Red),
+                                e
+                            ),
+                        }
+                    }
                     Encrypt(shared_secret) => self.set_encryption(&shared_secret),
                     Shutdown => {
                         return self.writer;
@@ -61,7 +79,7 @@ impl PacketSender {
     /// Sends a packet
     pub async fn send(
         &mut self,
-        mut packet_data: Vec<u8>,
+        packet_data: Vec<u8>,
         packet_id: u32,
     ) -> Result<(), Box<dyn Error>> {
         let mut buffer = Vec::new();
@@ -69,11 +87,11 @@ impl PacketSender {
 
         // Compose body (id + packet)
         data::write::var_u32(&mut body_buffer, packet_id);
-        body_buffer.append(&mut packet_data);
+        body_buffer.extend(packet_data);
 
         // Compose header (length)
         data::write::var_u32(&mut buffer, body_buffer.len() as u32);
-        buffer.append(&mut body_buffer);
+        buffer.extend(body_buffer);
 
         match &self.compression_threshold {
             Some(_t) => {
@@ -171,5 +189,26 @@ impl PacketSender {
                 panic!("Error when encrypting: {}", e);
             }
         };
+    }
+}
+
+#[derive(Clone)]
+pub struct PacketSenderHandle {
+    channel: Sender<PacketSenderMessage>,
+}
+impl PacketSenderHandle {
+    pub fn new(channel: Sender<PacketSenderMessage>) -> Self {
+        Self { channel }
+    }
+
+    pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
+        if let Err(e) = self
+            .channel
+            .send(PacketSenderMessage::Packet(id, buffer))
+            .await
+        {
+            return Err(format!("{}", e));
+        };
+        Ok(())
     }
 }
