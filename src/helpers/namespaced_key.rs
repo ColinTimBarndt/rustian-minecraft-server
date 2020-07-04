@@ -17,6 +17,13 @@ impl NamespacedKey {
     pub fn key(&self) -> &Cow<'static, str> {
         self.1.borrow()
     }
+    pub fn serialize_vec(buffer: &mut Vec<u8>, vec: &Vec<NamespacedKey>) {
+        use crate::packet::data::write;
+        write::var_usize(buffer, vec.len());
+        for key in vec {
+            write::string(buffer, key.to_string());
+        }
+    }
 }
 
 impl Hash for NamespacedKey {

@@ -1,7 +1,9 @@
 use super::data;
 use openssl::symm::*;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::{Receiver, Sender};
 extern crate colorful;
 use colorful::Color;
@@ -9,8 +11,8 @@ use colorful::Colorful;
 
 // use tokio::net::tcp::WriteHalf;
 // type Writer = WriteHalf<'static>;
-use tokio::io::WriteHalf;
-type Writer = WriteHalf<tokio::net::TcpStream>;
+use tokio::net::tcp::OwnedWriteHalf;
+type Writer = OwnedWriteHalf;
 
 pub struct PacketSender {
     writer: Writer,
@@ -21,15 +23,19 @@ pub struct PacketSender {
 
 #[derive(Debug)]
 pub enum PacketSenderMessage {
-    /// Tell the packet sender thread to send a packet
+    /// Tell the packet sender actor to send a packet
     Packet(u32, Vec<u8>),
-    /// Tell the packet sender thread to send a packet
+    /// Tell the packet sender actor to send a packet
     PacketBox(u32, Box<Vec<u8>>),
+    /// Tell the packet sender actor to send a packet
+    /// The actor is going to wait for the broadcast
+    /// to send the packet
+    PacketBroadcast(broadcast::Receiver<Option<Arc<(u32, Vec<u8>)>>>),
     /// Tell the sender thread to enable encryption with
     /// the given shared secret
     Encrypt(Vec<u8>),
-    /// Tell the sender thread to immediately shut down
-    /// and return the TCP stream write half back to
+    /// Tell the sender actor to shut down
+    /// and return itself back to
     /// the packet handler thread
     Shutdown,
 }
@@ -44,21 +50,13 @@ impl PacketSender {
         }
     }
     /// Listens for any outgoing packets that have to be sent
-    pub async fn listen(mut self) -> Writer {
+    pub async fn listen(mut self) -> Self {
         loop {
             use PacketSenderMessage::*;
             match self.receiver.recv().await {
                 Some(message) => match message {
-                    Packet(packet_id, raw_packet) => match self.send(raw_packet, packet_id).await {
-                        Ok(()) => (),
-                        Err(e) => eprintln!(
-                            "{}: {}",
-                            "Error in packet sender thread".color(Color::Red),
-                            e
-                        ),
-                    },
-                    PacketBox(packet_id, raw_packet) => {
-                        match self.send(*raw_packet, packet_id).await {
+                    Packet(packet_id, raw_packet) => {
+                        match self.send(&raw_packet, packet_id).await {
                             Ok(()) => (),
                             Err(e) => eprintln!(
                                 "{}: {}",
@@ -67,9 +65,35 @@ impl PacketSender {
                             ),
                         }
                     }
+                    PacketBox(packet_id, raw_packet) => {
+                        match self.send(&*raw_packet, packet_id).await {
+                            Ok(()) => (),
+                            Err(e) => eprintln!(
+                                "{}: {}",
+                                "Error in packet sender thread".color(Color::Red),
+                                e
+                            ),
+                        }
+                    }
+                    PacketBroadcast(mut receiver) => match receiver.recv().await {
+                        Ok(Some(shared_packet)) => {
+                            let (packet_id, raw_packet) = &*shared_packet;
+                            match self.send(raw_packet, *packet_id).await {
+                                Ok(()) => (),
+                                Err(e) => eprintln!(
+                                    "{}: {}",
+                                    "Error in packet sender thread".color(Color::Red),
+                                    e
+                                ),
+                            }
+                        }
+                        _ => {
+                            continue;
+                        }
+                    },
                     Encrypt(shared_secret) => self.set_encryption(&shared_secret),
                     Shutdown => {
-                        return self.writer;
+                        return self;
                     }
                 },
                 None => panic!("Outgoing channel got dropped"),
@@ -77,11 +101,7 @@ impl PacketSender {
         }
     }
     /// Sends a packet
-    pub async fn send(
-        &mut self,
-        packet_data: Vec<u8>,
-        packet_id: u32,
-    ) -> Result<(), Box<dyn Error>> {
+    pub async fn send(&mut self, packet_data: &[u8], packet_id: u32) -> Result<(), Box<dyn Error>> {
         let mut buffer = Vec::new();
         let mut body_buffer = Vec::with_capacity(packet_data.len() + 4);
 
@@ -190,6 +210,10 @@ impl PacketSender {
             }
         };
     }
+
+    pub fn to_writer(self) -> Writer {
+        self.writer
+    }
 }
 
 #[derive(Clone)]
@@ -205,6 +229,20 @@ impl PacketSenderHandle {
         if let Err(e) = self
             .channel
             .send(PacketSenderMessage::Packet(id, buffer))
+            .await
+        {
+            return Err(format!("{}", e));
+        };
+        Ok(())
+    }
+
+    pub async fn boradcast_packet(
+        &mut self,
+        broadcast: broadcast::Receiver<Option<Arc<(u32, Vec<u8>)>>>,
+    ) -> Result<(), String> {
+        if let Err(e) = self
+            .channel
+            .send(PacketSenderMessage::PacketBroadcast(broadcast))
             .await
         {
             return Err(format!("{}", e));

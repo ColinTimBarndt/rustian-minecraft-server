@@ -1,5 +1,6 @@
 use super::*;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::spawn;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -56,13 +57,16 @@ impl PacketHandler {
         };
         {
             spawn(async move {
+                // This function got added to Tokio later. Thank you so much 🙌!
+                let (reader, writer) = TcpStream::into_split(stream);
                 //use tokio::net::tcp::{ReadHalf, WriteHalf};
-                let (reader, writer)/* : (ReadHalf<'_>, WriteHalf<'_>) */ = tokio::io::split(stream);
+                /* let (reader, writer): (ReadHalf<'_>, WriteHalf<'_>) = tokio::io::split(stream); */
                 /*let static_reader: ReadHalf<'static>;
                 let static_writer: WriteHalf<'static>;
                 unsafe {
                     // I was trying to avoid using unsafe here but io::split is broken
                     // This code should work because ´stream´ outlives both threads
+                    // But it is still unstable, do not do this
                     static_reader = std::mem::transmute(reader);
                     static_writer = std::mem::transmute(writer);
                 }*/
@@ -94,18 +98,50 @@ impl PacketHandler {
                         }
                     }
                 }
+                // Sleep until the connection can be closed
                 let (reader_res, writer_res) = futures::join!(reader_handle, writer_handle);
-                let (reader, writer) = (
-                    reader_res.expect("Reader channel failed shutting down"),
-                    writer_res.expect("Writer channel failed shutting down"),
-                );
-                use tokio::io::ReadHalf;
-                let stream: TcpStream = ReadHalf::unsplit(reader, writer);
-                stream
-                    .shutdown(std::net::Shutdown::Both)
-                    .unwrap_or_else(|err| {
-                        panic!("Failed to shut down connection {}: {}", addr, err);
-                    });
+                let (p_receiver, p_sender) = (reader_res.ok(), writer_res.ok());
+                if let Some(p_receiver) = p_receiver {
+                    let reader = p_receiver.to_reader();
+                    if let Some(p_sender) = p_sender {
+                        let writer = p_sender.to_writer();
+                        let stream = reader.reunite(writer).unwrap();
+                        stream
+                            .shutdown(std::net::Shutdown::Both)
+                            .unwrap_or_else(|err| {
+                                eprintln!("Failed to shut down connection {}: {}", addr, err);
+                            });
+                    } else {
+                        eprintln!(
+                            "Failed to shut down connection {}: {}",
+                            addr, "Sender thread panicked"
+                        );
+                    }
+                } else {
+                    if let Some(p_sender) = p_sender {
+                        let mut writer = p_sender.to_writer();
+                        writer.shutdown().await.unwrap_or_else(|err| {
+                            eprintln!("Failed to shut down connection {}: {}", addr, err);
+                        });
+                        eprintln!(
+                            "Failed to fully shut down connection {}: {}",
+                            addr, "Receiver thread panicked"
+                        );
+                    } else {
+                        eprintln!(
+                            "Failed to shut down connection {}: {}",
+                            addr, "Sender and receiver threads panicked"
+                        );
+                    }
+                }
+                //use tokio::io::ReadHalf;
+                //let stream: TcpStream =
+                //    ReadHalf::unsplit(p_receiver.to_reader(), p_sender.to_writer());
+                //stream
+                //    .shutdown(std::net::Shutdown::Both)
+                //    .unwrap_or_else(|err| {
+                //        panic!("Failed to shut down connection {}: {}", addr, err);
+                //    });
                 match me.server.player_disconnect(me.address).await {
                     Ok(()) => (),
                     Err(e) => eprintln!("Failed to dispatch player disconnect to server: {}", e),

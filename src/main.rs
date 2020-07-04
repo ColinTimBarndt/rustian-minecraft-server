@@ -1,12 +1,11 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 use colorful::Color;
 use colorful::Colorful;
 use std::error::Error;
 extern crate colorful;
-#[macro_use]
-extern crate lazy_static;
 
+pub mod actor_model;
 pub mod helpers;
 pub mod packet;
 pub mod server;
@@ -28,10 +27,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .bold(),
         ip = server.address
     );
-    let (server_handle, server_thread_handle) = MinecraftServer::listen(server);
+    let (_server_handle, server_thread_handle) = MinecraftServer::listen(server);
     //chunk_test();
     // Let the server run
-    server_thread_handle.await;
+    server_thread_handle.await?;
     Ok(())
 }
 

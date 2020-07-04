@@ -1,9 +1,15 @@
+// Based on: https://github.com/feather-rs/feather/blob/develop/core/src/chunk.rs
+
 use super::{block::blocks, Block};
 use crate::helpers::{BitArray, NibbleArray4096, Vec3d};
+use std::ops;
 
 pub const CHUNK_BLOCK_WIDTH: u32 = 16;
 const COORDINATE_SCALE: i32 = CHUNK_BLOCK_WIDTH as i32;
 
+pub const LOCAL_PALETTE_BIT_LIMIT: u8 = 9;
+
+#[derive(Debug)]
 pub struct Chunk {
   pub sections: [Option<ChunkSection>; 16],
   position: ChunkPosition,
@@ -55,6 +61,9 @@ impl Chunk {
       self.sections[y_index] = Some(section);
     }
   }
+  pub fn get_position(&self) -> &ChunkPosition {
+    &self.position
+  }
 }
 
 impl Default for Chunk {
@@ -69,9 +78,10 @@ impl Default for Chunk {
   }
 }
 
+#[derive(Clone, Copy, Debug, Hash, Eq)]
 pub struct ChunkPosition {
-  x: i32,
-  z: i32,
+  pub x: i32,
+  pub z: i32,
 }
 impl ChunkPosition {
   pub fn new(x: i32, z: i32) -> Self {
@@ -111,7 +121,85 @@ impl From<Vec3d<i32>> for ChunkPosition {
     }
   }
 }
-// https://wiki.vg/Data_Generators
+
+impl ops::Add<Self> for ChunkPosition {
+  type Output = Self;
+  fn add(self, other: Self) -> Self::Output {
+    Self {
+      x: self.x + other.x,
+      z: self.z + other.z,
+    }
+  }
+}
+impl ops::Sub<Self> for ChunkPosition {
+  type Output = Self;
+  fn sub(self, other: Self) -> Self::Output {
+    Self {
+      x: self.x - other.x,
+      z: self.z - other.z,
+    }
+  }
+}
+impl ops::Add<&Self> for ChunkPosition {
+  type Output = Self;
+  fn add(self, other: &Self) -> Self::Output {
+    Self {
+      x: self.x + other.x,
+      z: self.z + other.z,
+    }
+  }
+}
+impl ops::Sub<&Self> for ChunkPosition {
+  type Output = Self;
+  fn sub(self, other: &Self) -> Self::Output {
+    Self {
+      x: self.x - other.x,
+      z: self.z - other.z,
+    }
+  }
+}
+impl ops::Add<Self> for &ChunkPosition {
+  type Output = ChunkPosition;
+  fn add(self, other: Self) -> Self::Output {
+    ChunkPosition {
+      x: self.x + other.x,
+      z: self.z + other.z,
+    }
+  }
+}
+impl ops::Sub<Self> for &ChunkPosition {
+  type Output = ChunkPosition;
+  fn sub(self, other: Self) -> Self::Output {
+    ChunkPosition {
+      x: self.x - other.x,
+      z: self.z - other.z,
+    }
+  }
+}
+impl ops::Add<&Self> for &ChunkPosition {
+  type Output = ChunkPosition;
+  fn add(self, other: &Self) -> Self::Output {
+    ChunkPosition {
+      x: self.x + other.x,
+      z: self.z + other.z,
+    }
+  }
+}
+impl ops::Sub<&Self> for &ChunkPosition {
+  type Output = ChunkPosition;
+  fn sub(self, other: &Self) -> Self::Output {
+    ChunkPosition {
+      x: self.x - other.x,
+      z: self.z - other.z,
+    }
+  }
+}
+impl std::cmp::PartialEq for ChunkPosition {
+  fn eq(&self, other: &Self) -> bool {
+    self.x == other.x && self.z == other.z
+  }
+}
+
 #[derive(Clone)]
 pub struct ChunkSection {
   sky_light: NibbleArray4096,
@@ -194,7 +282,9 @@ impl ChunkSection {
           // Resize?
           // Figure out the new bits per block in the block data array
           let bpb = (64 - (palette.len() as u64 - 1).leading_zeros()) as u8;
-          let palette_index = if bpb <= BitArray::MAX_BITS_PER_ITEM {
+          let palette_index = if bpb <= LOCAL_PALETTE_BIT_LIMIT
+          /*BitArray::MAX_BITS_PER_ITEM*/
+          {
             self.data = self
               .data
               .resize_to(if bpb < BitArray::MIN_BITS_PER_ITEM {
@@ -285,7 +375,9 @@ impl ChunkSection {
 
     let mut optimized_bpb = (64 - (new_palette.len() as u64 - 1).leading_zeros()) as u8;
 
-    if optimized_bpb > BitArray::MAX_BITS_PER_ITEM {
+    if optimized_bpb > LOCAL_PALETTE_BIT_LIMIT
+    /*BitArray::MAX_BITS_PER_ITEM*/
+    {
       // Global palette
       self.palette = None;
     } else {
@@ -297,6 +389,18 @@ impl ChunkSection {
       self.palette = Some(new_palette);
     }
     true
+  }
+
+  pub fn get_solid_block_count(&self) -> u16 {
+    self.solid_blocks
+  }
+
+  pub fn get_palette(&self) -> &Option<Vec<u16>> {
+    &self.palette
+  }
+
+  pub fn get_raw_block_data(&self) -> &BitArray {
+    &self.data
   }
 
   pub fn debug_dump_data(&self, file: String) {
@@ -325,6 +429,15 @@ impl Default for ChunkSection {
       changed: false,
       solid_blocks: 0,
     }
+  }
+}
+
+impl std::fmt::Debug for ChunkSection {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ChunkSection")
+      .field("solid_blocks", &self.solid_blocks)
+      .field("changed", &self.changed)
+      .finish()
   }
 }
 

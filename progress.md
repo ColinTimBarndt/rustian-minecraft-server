@@ -19,12 +19,12 @@
 | ✅  | S→C: Player Abilities (Optional)                                                                                                |
 | ✅  | C→S: Plugin Message: minecraft:brand with the client's brand (Optional)                                                         |
 | ✅  | C→S: Client Settings                                                                                                            |
-| ❌  | S→C: Held Item Change                                                                                                           |
-| ❌  | S→C: Declare Recipes                                                                                                            |
-| ❌  | S→C: Tags                                                                                                                       |
-| ❌  | S→C: Entity Status                                                                                                              |
-| ❌  | S→C: Declare Commands                                                                                                           |
-| ❌  | S→C: Unlock Recipes                                                                                                             |
+| ✅  | S→C: Held Item Change                                                                                                           |
+| ✅  | S→C: Declare Recipes                                                                                                            |
+| ✅  | S→C: Tags                                                                                                                       |
+| ✅  | S→C: Entity Status _(The wiki does not specify which status, assuming op permission level)_                                     |
+| ✅  | S→C: Declare Commands                                                                                                           |
+| ✅  | S→C: Unlock Recipes                                                                                                             |
 | ❌  | S→C: Player Position And Look                                                                                                   |
 | ❌  | S→C: Player Info (Add Player action)                                                                                            |
 | ❌  | S→C: Player Info (Update latency action)                                                                                        |

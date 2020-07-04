@@ -1,5 +1,4 @@
 use crate::packet::PlayerConnection;
-use crate::server::universe::Player;
 use futures::{future::FutureExt, select};
 use openssl::pkey::Private;
 use openssl::rsa::Rsa;
@@ -10,13 +9,13 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
 
+pub mod registries;
 pub mod universe;
 
 pub struct MinecraftServer {
     pub address: SocketAddr,
     listener: TcpListener,
     connections: HashMap<SocketAddr, PlayerConnection>,
-    players: Vec<Player>,
     pub key_pair: Arc<Rsa<Private>>,
 }
 
@@ -41,7 +40,6 @@ impl MinecraftServer {
             listener: listener,
             connections: HashMap::new(),
             key_pair: Arc::new(private_key),
-            players: Vec::new(),
         };
 
         return Ok(server);
@@ -51,9 +49,7 @@ impl MinecraftServer {
         0
     }
 
-    pub fn listen(
-        mut server: MinecraftServer,
-    ) -> (MinecraftServerHandle, tokio::task::JoinHandle<()>) {
+    pub fn listen(mut self) -> (MinecraftServerHandle, tokio::task::JoinHandle<()>) {
         /*tokio::run(self.listener.incoming()
             .map_err(|e| eprintln!("Failed to accept connection: {:?}", e))
             .for_each(|socket| {
@@ -62,87 +58,100 @@ impl MinecraftServer {
         );*/
         let (send, recv) = channel(128);
         let send2 = send.clone();
-        let server_thread_handle = tokio::spawn(handle_connections(server, send, recv));
+        let server_thread_handle = tokio::spawn(self.start_actor(send, recv));
         return (MinecraftServerHandle::new(send2), server_thread_handle);
+    }
 
-        async fn handle_connections(
-            mut server: MinecraftServer,
-            send: Sender<MinecraftServerHandleMessage>,
-            mut recv: Receiver<MinecraftServerHandleMessage>,
-        ) {
-            loop {
-                select! {
-                    res = server.listener.accept().fuse() => {
-                        let (socket, addr): (TcpStream, SocketAddr) = match res {
-                            Ok((a, b)) => (a, b),
-                            Err(e) => {
-                                println!("Error in new connection with: {}", e);
-                                continue;
-                            }
-                        };
-                        match handle_client(MinecraftServerHandle::new(send.clone()), socket, addr, server.key_pair.clone()).await {
-                            Ok(connection) => {server.connections.insert(connection.address.clone(), connection);},
-                            Err(e) => println!("Severe error in new connection: {}", e),
-                        };
-                        std::thread::sleep(std::time::Duration::from_millis(400));
-                    },
-                    msg_opt = recv.recv().fuse() => {
-                        if let Some(msg) = msg_opt {
-                            match msg {
-                                MinecraftServerHandleMessage::Shutdown => {
-                                    //TODO dispatch shutdown event to universe
-                                    println!("Shutting down server");
-                                    return;
-                                }
-                                MinecraftServerHandleMessage::PlayerDisconnect(addr) => {
-                                    //TODO dispatch disconnect event to universe
-                                    println!("Disconnect from {}", addr);
-                                    server.connections.remove(&addr);
-                                    continue;
-                                }
-                            }
+    async fn start_actor(
+        mut self,
+        send: Sender<MinecraftServerHandleMessage>,
+        mut recv: Receiver<MinecraftServerHandleMessage>,
+    ) {
+        loop {
+            select! {
+                res = self.listener.accept().fuse() => {
+                    let (socket, addr): (TcpStream, SocketAddr) = match res {
+                        Ok((a, b)) => (a, b),
+                        Err(e) => {
+                            println!("Error in new connection with: {}", e);
+                            continue;
+                        }
+                    };
+                    match MinecraftServer::handle_client(MinecraftServerHandle::new(send.clone()), socket, addr, self.key_pair.clone()).await {
+                        Ok(connection) => {self.connections.insert(connection.address.clone(), connection);},
+                        Err(e) => eprintln!("Severe error in new connection: {}", e),
+                    };
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                },
+                msg_opt = recv.recv().fuse() => {
+                    if let Some(msg) = msg_opt {
+                        if !self.handle_actor_message(msg).await {
+                            return;
                         }
                     }
                 }
             }
         }
+    }
 
-        async fn handle_client(
-            server: MinecraftServerHandle,
-            socket: TcpStream,
-            address: SocketAddr,
-            encryption: Arc<Rsa<Private>>,
-        ) -> Result<PlayerConnection, String> {
-            println!("Connection from {}", address);
-            let connection =
-                match PlayerConnection::new(server, socket, address.clone(), encryption).await {
-                    Ok(o) => o,
-                    Err(e) => return Err(format!("{}", e)),
-                };
+    async fn handle_client(
+        server: MinecraftServerHandle,
+        socket: TcpStream,
+        address: SocketAddr,
+        encryption: Arc<Rsa<Private>>,
+    ) -> Result<PlayerConnection, String> {
+        println!("Connection from {}", address);
+        let connection =
+            match PlayerConnection::new(server, socket, address.clone(), encryption).await {
+                Ok(o) => o,
+                Err(e) => return Err(format!("{}", e)),
+            };
 
-            println!("Connection handled for ip {}", address);
+        println!("Connection handled for ip {}", address);
 
-            //let mut server_lock = server.lock().await;
-            //let packet_queue = connection.outgoing_queue.clone();
-            //server_lock.connections.insert(address.clone(), packet_queue);
-            //drop(server_lock);
+        //let mut server_lock = server.lock().await;
+        //let packet_queue = connection.outgoing_queue.clone();
+        //server_lock.connections.insert(address.clone(), packet_queue);
+        //drop(server_lock);
 
-            //connection.listen().await;
+        //connection.listen().await;
 
-            //let mut server_lock = server.lock().await;
-            //server_lock.connections.remove(&address);
-            //drop(server_lock);
-            Ok(connection)
+        //let mut server_lock = server.lock().await;
+        //server_lock.connections.remove(&address);
+        //drop(server_lock);
+        Ok(connection)
 
-            /*let mut buf: [u8; 1024] = [0; 1024];
-            let n = socket.read(&mut buf).await?;
-            //let rec = String::from_utf8(buf[0..n].to_vec())?;
-            println!("Received:\n");
-            for byte in buf[0..n].to_vec() {
-                print!("{:X}", byte);
-            }
-            println!();*/
+        /*let mut buf: [u8; 1024] = [0; 1024];
+        let n = socket.read(&mut buf).await?;
+        //let rec = String::from_utf8(buf[0..n].to_vec())?;
+        println!("Received:\n");
+        for byte in buf[0..n].to_vec() {
+            print!("{:X}", byte);
         }
+        println!();*/
+    }
+
+    /// Returns whether the actor should continue running
+    async fn handle_actor_message(&mut self, msg: MinecraftServerHandleMessage) -> bool {
+        match msg {
+            MinecraftServerHandleMessage::Shutdown => {
+                //TODO dispatch shutdown event to universe
+                println!("Shutting down server");
+                for (_, connection) in &mut self.connections {
+                    connection
+                        .close_channel()
+                        .await
+                        .expect("Failed to close connections");
+                }
+                return false;
+            }
+            MinecraftServerHandleMessage::PlayerDisconnect(addr) => {
+                //TODO dispatch disconnect event to universe
+                println!("Disconnect from {}", addr);
+                self.connections.remove(&addr);
+            }
+        }
+        true
     }
 }
 

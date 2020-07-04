@@ -1,0 +1,11 @@
+{
+  "minecraft:block": [{ "name": "block_state", "type": "var_usize" }],
+  "minecraft:dust": [
+    { "name": "red", "type": "f32" },
+    { "name": "green", "type": "f32" },
+    { "name": "blue", "type": "f32" },
+    { "name": "scale", "type": "f32" }
+  ],
+  "minecraft:falling_dust": [{ "name": "block_state", "type": "var_usize" }],
+  "minecraft:item": [{ "name": "item", "type": "item_stack" }]
+}

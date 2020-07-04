@@ -1,5 +1,6 @@
 use crate::helpers::{BitArray, NibbleArray4096};
 use crate::packet::{data::write, PacketSerialOut};
+use crate::server::universe::world::ChunkSection;
 use crate::server::universe::world::{block, Chunk, ChunkPosition};
 use std::mem;
 extern crate nbt;
@@ -104,6 +105,13 @@ impl ChunkDataHeightmaps {
 }
 
 impl ChunkSectionData {
+  pub fn from_section(sec: &ChunkSection) -> Self {
+    Self {
+      solid_blocks: sec.get_solid_block_count(),
+      palette: sec.get_palette().clone(),
+      blocks: sec.get_raw_block_data().clone(),
+    }
+  }
   pub fn write(self, buffer: &mut Vec<u8>) {
     write::u16(buffer, self.solid_blocks);
     write::u8(buffer, self.blocks.bits_per_item());
@@ -121,6 +129,15 @@ impl ChunkSectionData {
     write::var_usize(buffer, block_data.len());
     for long in block_data {
       write::u64(buffer, long);
+    }
+  }
+}
+
+impl Default for ChunkDataHeightmaps {
+  fn default() -> Self {
+    Self {
+      motion_blocking: BitArray::new(9, 256),
+      world_surface: BitArray::new(9, 256),
     }
   }
 }

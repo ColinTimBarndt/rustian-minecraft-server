@@ -1,43 +1,67 @@
-use std::fmt::Display;
 use core::ops::*;
+use std::fmt::Display;
 
 /// The `Vec3d` structure represents a mathematical vector
 /// made of three components of any equal type
-#[derive(Clone, Debug)]
-pub struct Vec3d<T>(T, T, T);
+#[derive(Clone, Debug, Copy)]
+pub struct Vec3d<T: Copy>(T, T, T);
 
-impl <T> Display for Vec3d<T> where T: Display {
+impl<T: Copy> Display for Vec3d<T>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         write!(f, "Vec3d({}, {}, {})", self.0, self.1, self.2)
     }
 }
 
-impl <T> Vec3d<T> {
+impl<T: Copy> Vec3d<T> {
     /// Creates a new three-dimensional mathematical vector
     pub fn new(x: T, y: T, z: T) -> Self {
         Vec3d::<T>(x, y, z)
     }
     /// Returns the first component (`x`) as a reference
-    pub fn get_x_as_ref(&self) -> &T {&(*self).0}
+    pub fn get_x_as_ref(&self) -> &T {
+        &(*self).0
+    }
     /// Returns the second component (`y`) as a reference
-    pub fn get_y_as_ref(&self) -> &T {&(*self).1}
+    pub fn get_y_as_ref(&self) -> &T {
+        &(*self).1
+    }
     /// Returns the third component (`z`) as a reference
-    pub fn get_z_as_ref(&self) -> &T {&(*self).2}
+    pub fn get_z_as_ref(&self) -> &T {
+        &(*self).2
+    }
     /// Sets the value of the first component (`x`)
-    pub fn set_x(&mut self, x: T) {(*self).0 = x}
+    pub fn set_x(&mut self, x: T) {
+        (*self).0 = x
+    }
     /// Sets the value of the second component (`y`)
-    pub fn set_y(&mut self, y: T) {(*self).1 = y}
+    pub fn set_y(&mut self, y: T) {
+        (*self).1 = y
+    }
     /// Sets the value of the third component (`z`)
-    pub fn set_z(&mut self, z: T) {(*self).2 = z}
+    pub fn set_z(&mut self, z: T) {
+        (*self).2 = z
+    }
 }
 
-impl <T> Vec3d<T> where T: Copy {
+impl<T: Copy> Vec3d<T>
+where
+    T: Copy,
+{
     /// Returns a copy of the first component (`x`)
-    pub fn get_x(&self) -> T {(*self).0}
+    pub fn get_x(&self) -> T {
+        (*self).0
+    }
     /// Returns a copy of the second component (`y`)
-    pub fn get_y(&self) -> T {(*self).1}
+    pub fn get_y(&self) -> T {
+        (*self).1
+    }
     /// Returns a copy of the third component (`z`)
-    pub fn get_z(&self) -> T {(*self).2}
+    pub fn get_z(&self) -> T {
+        (*self).2
+    }
 }
 
 /*impl<F, T> std::convert::TryFrom<Vec3d<F>> for Vec3d<T>
@@ -52,7 +76,7 @@ where T: std::convert::TryFrom<F> {
     }
 }*/
 
-impl<T> std::convert::From<Vec3d<T>> for (T, T, T) {
+impl<T: Copy> std::convert::From<Vec3d<T>> for (T, T, T) {
     fn from(from: Vec3d<T>) -> (T, T, T) {
         (from.0, from.1, from.2)
     }

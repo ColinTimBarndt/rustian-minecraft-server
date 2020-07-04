@@ -8,9 +8,9 @@ pub enum Dimension {
 impl std::fmt::Display for Dimension {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            Dimension::Nether    => write!(f, "Dimension::Nether"),
+            Dimension::Nether => write!(f, "Dimension::Nether"),
             Dimension::Overworld => write!(f, "Dimension::Overworld"),
-            Dimension::End       => write!(f, "Dimension::End")
+            Dimension::End => write!(f, "Dimension::End"),
         }
     }
 }

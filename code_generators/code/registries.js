@@ -9,7 +9,11 @@ file.commentLine(
 );
 
 file.writeLine('#![ignore = "unused"]');
-file.writeLine("use crate::helpers::{NamespacedKey, Registry};");
+file.writeLine(
+  "use crate::helpers::{NamespacedKey, Registry};",
+  "use num_derive::FromPrimitive;",
+  "use num_traits::FromPrimitive;"
+);
 
 /**
  * @type {{
@@ -31,7 +35,7 @@ Object.entries(registryData).forEach(([registryKeyStr, registry]) => {
   const registryKey = lib.NamespacedKey.fromString(registryKeyStr);
   const registryRustName = lib.toCamelCase(registryKey.id, true);
   file.writeLine(
-    "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]",
+    "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, FromPrimitive)]",
     "#[allow(non_camel_case_types)]"
   );
   file.documentLine(`Key: \`${registryKeyStr}\``);
@@ -104,6 +108,20 @@ Object.entries(registryData).forEach(([registryKeyStr, registry]) => {
       match.finish();
       inline.finish();
       fn.write(")").newLine();
+      fn.finish();
+    }
+    // get_id(&self) -> usize
+    {
+      const fn = new lib.FunctionGenerator(impl, "get_id", "usize");
+      fn.addParam("&self");
+      fn.writeLine("*self as usize");
+      fn.finish();
+    }
+    // from_id(id: usize) -> Option<Self>
+    {
+      const fn = new lib.FunctionGenerator(impl, "from_id", "Option<Self>");
+      fn.addParam("id", "usize");
+      fn.writeLine("FromPrimitive::from_usize(id)");
       fn.finish();
     }
     impl.finish();

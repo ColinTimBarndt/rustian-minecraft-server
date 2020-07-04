@@ -19,14 +19,14 @@ impl PacketSerialOut for PluginMessage {
         let channel = format!("{}", self.channel);
         write::string(buffer, channel);
         write::var_u32(buffer, self.data.len() as u32);
-        buffer.append(&mut self.data.clone());
+        buffer.extend(&self.data);
         Ok(())
     }
     fn consume_write(mut self, buffer: &mut Vec<u8>) -> Result<(), String> {
         let channel = format!("{}", self.channel);
         write::string(buffer, channel);
         write::var_u32(buffer, self.data.len() as u32);
-        buffer.append(&mut self.data);
+        buffer.extend(self.data);
         Ok(())
     }
 }

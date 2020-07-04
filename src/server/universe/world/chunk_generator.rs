@@ -1,6 +1,6 @@
 use super::{block::Block, Chunk, ChunkPosition};
 
-pub trait ChunkGenerator {
+pub trait ChunkGenerator: Send + 'static {
     fn generate(&mut self, pos: ChunkPosition) -> Chunk;
 }
 

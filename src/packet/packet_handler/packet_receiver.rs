@@ -13,8 +13,8 @@ use colorful::{Color, Colorful};
 
 // use tokio::net::tcp::ReadHalf;
 // type Reader = /*ReadHalf<tokio::net::TcpStream>*/ReadHalf<'static>;
-use tokio::io::ReadHalf;
-type Reader = ReadHalf<tokio::net::TcpStream>;
+use tokio::net::tcp::OwnedReadHalf;
+type Reader = OwnedReadHalf;
 
 pub struct PacketReceiver {
     reader: Reader,
@@ -61,7 +61,7 @@ impl PacketReceiver {
         }
     }
     /// Listens for any incoming packets
-    pub async fn listen(mut self, mut cancel: Receiver<()>) -> Reader {
+    pub async fn listen(mut self, mut cancel: Receiver<()>) -> Self {
         let cancel_task = cancel.recv().fuse();
         pin_mut!(cancel_task);
         // This loop processes all packets to be sent
@@ -81,7 +81,7 @@ impl PacketReceiver {
 
                             r.0.expect("Failed to shut down sending channel");
                             r.1.expect("Failed to notify packet handler");
-                            return self.reader;
+                            return self;
 
                             //self.handler.lock().await.close_channel().await;
                         }
@@ -91,7 +91,7 @@ impl PacketReceiver {
                 opt = cancel_task => match opt {
                     Some(()) => {
                         //self.reader.as_ref().shutdown(std::net::Shutdown::Read);
-                        return self.reader;
+                        return self;
                     },
                     None => panic!("Shutdown channel got dropped")
                 },
@@ -325,6 +325,10 @@ impl PacketReceiver {
                 panic!("Error when encrypting: {}", e);
             }
         };
+    }
+
+    pub fn to_reader(self) -> Reader {
+        self.reader
     }
 }
 

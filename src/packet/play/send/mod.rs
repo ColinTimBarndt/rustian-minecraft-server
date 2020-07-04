@@ -35,7 +35,10 @@ mod tags;
 pub use tags::*;
 
 pub mod entity_status;
-pub use entity_status::*;
+pub use entity_status::EntityStatus;
 
 mod declare_commands;
 pub use declare_commands::*;
+
+pub mod unlock_recipes;
+pub use unlock_recipes::UnlockRecipes;

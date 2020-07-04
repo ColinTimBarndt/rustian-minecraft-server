@@ -20,6 +20,7 @@ pub async fn handle(
             use send::EncryptionRequest;
 
             let packet = LoginStart::consume_read(buffer)?;
+            receiver.login_name = Some(packet.name);
             //println!("User attempts to log in: {}", packet.name);
             let key = receiver.key.as_ref().unwrap();
             let answer = EncryptionRequest::new(
@@ -29,14 +30,14 @@ pub async fn handle(
             );
             receiver.verify_token = Some(answer.verify_token.clone());
             //print!("Requesting encryption. Verify token = ");
-            for byte in &answer.verify_token {
+            /*for byte in &answer.verify_token {
                 if *byte < 0x10 {
                     print!("0{:X}", byte);
                 } else {
                     print!("{:X}", byte);
                 }
             }
-            println!();
+            println!();*/
             send_packet!(answer => receiver.send_packet)?;
             Ok(())
         }
@@ -67,10 +68,26 @@ pub async fn handle(
             let correct_token = verify_token == *receiver.verify_token.as_ref().unwrap();
             //println!("\nVerify Token correct: {}", correct_token);
             if correct_token {
+                let user_uuid = uuid::Uuid::new_v4();
+                let user_name = receiver.login_name.as_ref().unwrap().clone();
                 let answer = LoginSuccess {
-                    uuid: uuid::Uuid::new_v4(),
-                    username: "TEST".to_string(),
+                    uuid: user_uuid.clone(),
+                    username: user_name.clone(),
                 };
+                // TODO: Create a unique EID
+                let player_entity_id = 1234u32;
+                {
+                    use std::sync::Arc;
+                    use tokio::sync::RwLock;
+                    receiver.player =
+                        Some(Arc::new(RwLock::new(crate::server::universe::Player::new(
+                            receiver.create_player_connection_handle(),
+                            user_name,
+                            user_uuid,
+                            player_entity_id,
+                        ))));
+                }
+                receiver.login_name = None;
                 receiver.set_encryption(shared_secret).await?;
                 send_packet!(answer => receiver.send_packet)?;
                 receiver.state = PlayerConnectionState::Play;
@@ -84,7 +101,7 @@ pub async fn handle(
                     Gamemode::*,
                 };
                 let join_game_packet = JoinGame {
-                    entity_id: 1000,
+                    entity_id: player_entity_id,
                     gamemode: Creative,
                     dimension: Overworld,
                     seed_hash: 0,
@@ -98,6 +115,13 @@ pub async fn handle(
                 send_packet!(super::play::send::PluginMessage {
                     channel: NamespacedKey::new("minecraft", "brand"),
                     data: b"rustian".to_vec()
+                } => receiver.send_packet)?;
+                send_packet!(super::play::send::Difficulty {
+                    difficulty: crate::server::universe::world::Difficulty::Hard,
+                    locked: false
+                } => receiver.send_packet)?;
+                send_packet!(super::play::send::PlayerAbilities {
+                    ..std::default::Default::default()
                 } => receiver.send_packet)?;
             } else {
                 receiver

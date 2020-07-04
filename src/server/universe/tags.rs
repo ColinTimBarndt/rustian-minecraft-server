@@ -66,7 +66,7 @@ impl<T: Registry> TagList<T> {
   }
 
   pub fn has_tag(&self, entry: T, tag: &NamespacedKey) -> bool {
-    for tag in self.tags.values() {
+    if let Some(tag) = self.tags.get(tag) {
       if tag.entries.contains(&entry) {
         return true;
       }

@@ -66,7 +66,7 @@ pub struct PlayerConnection {
     pub player: Option<Uuid>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PlayerConnectionPacketHandle {
     handler_channel: Sender<PacketHandlerMessage>,
     sender_channel: Sender<PacketSenderMessage>,
@@ -129,6 +129,12 @@ impl PlayerConnection {
 
     pub fn new_handle(&self) -> PlayerConnectionPacketHandle {
         (self.handler_channel.clone(), self.sender_channel.clone()).into()
+    }
+
+    pub async fn close_channel(&mut self) -> Result<(), SendError<PacketHandlerMessage>> {
+        self.handler_channel
+            .send(PacketHandlerMessage::CloseChannel)
+            .await
     }
 
     /*pub async fn listen(&mut self) {
