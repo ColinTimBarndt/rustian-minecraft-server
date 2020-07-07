@@ -50,7 +50,6 @@ impl EntityLiving for EntityPlayer {
 
 pub mod online_controller {
   use super::*;
-  use crate::actor_model::*;
   use crate::packet::PlayerConnectionPacketHandle;
   use async_trait::async_trait;
   use std::fmt;
@@ -67,15 +66,21 @@ pub mod online_controller {
   }
 
   /// Handle for communicating with this actor
-  pub type ControllerHandle = ActorHandleStruct<ControllerMessage>;
+  pub type ControllerHandle = super::EntityActorHandleStruct<ControllerMessage>;
 
   #[async_trait]
   impl Actor for Controller {
-    type Message = ControllerMessage;
     type Handle = ControllerHandle;
 
-    async fn handle_message(&mut self, _message: Self::Message) -> bool {
+    async fn handle_message(&mut self, _message: <Self::Handle as ActorHandle>::Message) -> bool {
       true
+    }
+
+    fn create_handle(
+      &self,
+      sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+    ) -> Self::Handle {
+      ControllerHandle::new(self.player.id, sender)
     }
   }
 

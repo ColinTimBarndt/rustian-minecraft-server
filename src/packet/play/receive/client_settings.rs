@@ -13,25 +13,25 @@ pub struct ClientSettings {
 
 impl PacketSerialIn for ClientSettings {
     const ID: u32 = 0x05;
-    fn consume_read(mut buffer: Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
+    fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
         use num_traits::FromPrimitive;
-        let locale = read::string(&mut buffer)?;
-        let view_distance = read::u8(&mut buffer)? as u16; // Maybe graphics will become better
-        let chat_mode = match FromPrimitive::from_u32(read::var_u32(&mut buffer)?) {
+        let locale = read::string(buffer)?;
+        let view_distance = read::u8(buffer)? as u16; // Maybe graphics will become better
+        let chat_mode = match FromPrimitive::from_u32(read::var_u32(buffer)?) {
             Some(x) => x,
             None => {
-                return Err(Box::new(PacketParsingError::InvalidPacket(String::from(
-                    format!("Invalid Chat Mode in ClientSettings packet"),
+                return Err(PacketParsingError::InvalidPacket(String::from(format!(
+                    "Invalid Chat Mode in ClientSettings packet"
                 ))))
             }
         };
-        let chat_colors_enabled = read::bool(&mut buffer)?;
-        let displayed_model_parts = DisplayedPlayerModelParts::new(read::u8(&mut buffer)?);
-        let main_hand = match FromPrimitive::from_u32(read::var_u32(&mut buffer)?) {
+        let chat_colors_enabled = read::bool(buffer)?;
+        let displayed_model_parts = DisplayedPlayerModelParts::new(read::u8(buffer)?);
+        let main_hand = match FromPrimitive::from_u32(read::var_u32(buffer)?) {
             Some(x) => x,
             None => {
-                return Err(Box::new(PacketParsingError::InvalidPacket(String::from(
-                    format!("Invalid Main Hand in ClientSettings packet"),
+                return Err(PacketParsingError::InvalidPacket(String::from(format!(
+                    "Invalid Main Hand in ClientSettings packet"
                 ))))
             }
         };

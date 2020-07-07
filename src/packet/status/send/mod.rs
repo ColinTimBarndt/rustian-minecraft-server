@@ -47,7 +47,7 @@ impl ServerStatus {
         for (name, uuid) in self.sample.iter() {
             match sample.push(object! {
                 "name" => name.to_string(),
-                "id" => uuid.hyphenated().to_string()
+                "id" => uuid.to_hyphenated().to_string()
             }) {
                 Ok(()) => (),
                 Err(e) => panic!("Will never happen: {}", e),

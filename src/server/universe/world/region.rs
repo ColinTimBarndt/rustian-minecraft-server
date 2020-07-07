@@ -7,7 +7,7 @@ use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel, error::SendError, Receiver};
+use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
 use tokio::sync::{broadcast, oneshot};
 
 pub const REGION_CHUNK_WIDTH: u32 = 2;
@@ -131,10 +131,12 @@ pub type RegionHandle = ActorHandleStruct<RegionMessage>;
 
 #[async_trait]
 impl Actor for Region {
-  type Message = RegionMessage;
   type Handle = RegionHandle;
 
-  async fn start_actor(mut self, mut recv: Receiver<ActorMessage<Self::Message>>) -> Self {
+  async fn start_actor(
+    mut self,
+    mut recv: Receiver<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+  ) -> Self {
     use std::time::Duration;
     use tokio::sync::mpsc::error::{TryRecvError, TrySendError};
     let mut tick_interval = {
@@ -205,7 +207,7 @@ impl Actor for Region {
     }
   }
 
-  async fn handle_message(&mut self, message: Self::Message) -> bool {
+  async fn handle_message(&mut self, message: <Self::Handle as ActorHandle>::Message) -> bool {
     match message {
       // Process the message
       RegionMessage::GetBlock {
@@ -304,6 +306,13 @@ impl Actor for Region {
       }
     }
   }
+
+  fn create_handle(
+    &self,
+    sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+  ) -> Self::Handle {
+    sender.into()
+  }
 }
 
 impl RegionHandle {
@@ -323,6 +332,28 @@ impl RegionHandle {
       Ok(opt) => Ok(opt),
       Err(_) => panic!("The sender channel got dropped somehow"),
     }
+  }
+
+  pub async fn set_chunk(
+    &mut self,
+    chunk: Chunk,
+  ) -> Result<(), SendError<ActorMessage<RegionMessage>>> {
+    self
+      .send_raw_message(ActorMessage::Other(RegionMessage::SetChunk(chunk)))
+      .await
+  }
+
+  pub async fn broadcast_chunk(
+    &mut self,
+    offset: ChunkPosition,
+    sender: broadcast::Sender<Option<Arc<(u32, Vec<u8>)>>>,
+  ) -> Result<(), SendError<ActorMessage<RegionMessage>>> {
+    self
+      .send_raw_message(ActorMessage::Other(RegionMessage::BroadcastChunk {
+        offset,
+        sender,
+      }))
+      .await
   }
 }
 

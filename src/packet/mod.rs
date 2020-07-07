@@ -29,10 +29,7 @@ pub mod status;
 
 pub trait PacketSerialIn: Sized {
     const ID: u32;
-    fn read(buffer: &mut Vec<u8>) -> Result<Self, Box<dyn Error>> {
-        Self::consume_read(buffer.clone())
-    }
-    fn consume_read(buffer: Vec<u8>) -> Result<Self, Box<dyn Error>>;
+    fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError>;
 }
 
 pub trait PacketSerialOut: Sized {

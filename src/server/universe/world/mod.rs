@@ -1,5 +1,5 @@
-pub mod block;
-pub use block::Block;
+pub mod blocks;
+pub use blocks::Block;
 
 mod difficulty;
 pub use difficulty::*;

@@ -69,11 +69,17 @@ pub type UniverseHandle = ActorHandleStruct<UniverseMessage>;
 
 #[async_trait]
 impl Actor for Universe {
-  type Message = UniverseMessage;
   type Handle = UniverseHandle;
 
-  async fn handle_message(&mut self, _message: UniverseMessage) -> bool {
+  async fn handle_message(&mut self, _message: <Self::Handle as ActorHandle>::Message) -> bool {
     true
+  }
+
+  fn create_handle(
+    &self,
+    sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+  ) -> Self::Handle {
+    sender.into()
   }
 }
 

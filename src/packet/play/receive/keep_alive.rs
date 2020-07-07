@@ -1,5 +1,5 @@
 use super::super::send;
-use crate::packet::{data::read, PacketSerialIn};
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 
 /// # Keep Alive (serverbound)
 /// [Documentation](https://wiki.vg/Protocol#Keep_Alive_.28serverbound.29)
@@ -13,9 +13,9 @@ pub struct KeepAlive {
 
 impl PacketSerialIn for KeepAlive {
   const ID: u32 = 0x0F;
-  fn consume_read(mut buffer: Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
+  fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     Ok(Self {
-      keep_alive_id: read::u64(&mut buffer)?,
+      keep_alive_id: read::u64(buffer)?,
     })
   }
 }

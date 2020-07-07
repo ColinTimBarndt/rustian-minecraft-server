@@ -8,18 +8,23 @@ use tokio::task::JoinHandle;
 /// using messages
 #[async_trait]
 pub trait Actor: Sized + std::fmt::Display + 'static {
-  type Message: Sized + Send + 'static;
-  type Handle: ActorHandle<Self::Message>;
+  type Handle: ActorHandle;
   const BUFFER_SIZE: usize = 100;
-  fn spawn_actor(mut self) -> (JoinHandle<Self>, Self::Handle)
+
+  fn spawn_actor(/*mut*/ self) -> (JoinHandle<Self>, Self::Handle)
   where
     Self: Send + 'static,
   {
-    let (mut send, recv) = channel(Self::BUFFER_SIZE);
+    let (send, recv) = channel(Self::BUFFER_SIZE);
+    let handle = self.create_handle(send);
     let fut = tokio::spawn(async move { self.start_actor(recv).await });
-    (fut, Self::Handle::from_sender(send))
+    (fut, handle)
   }
-  async fn start_actor(mut self, mut recv: Receiver<ActorMessage<Self::Message>>) -> Self {
+
+  async fn start_actor(
+    mut self,
+    mut recv: Receiver<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+  ) -> Self {
     loop {
       match recv.recv().await {
         None => {
@@ -38,8 +43,14 @@ pub trait Actor: Sized + std::fmt::Display + 'static {
     }
     self
   }
+
   /// Returns true if the actor 🧍 should continue running
-  async fn handle_message(&mut self, message: Self::Message) -> bool;
+  async fn handle_message(&mut self, message: <Self::Handle as ActorHandle>::Message) -> bool;
+
+  fn create_handle(
+    &self,
+    _sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+  ) -> Self::Handle;
 }
 
 /// A message an actor can receive
@@ -49,29 +60,40 @@ pub enum ActorMessage<M: Sized + Send + 'static> {
   Other(M),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ActorHandleStruct<M: Sized + Send + 'static> {
   pub(super) sender: Sender<ActorMessage<M>>,
 }
 
 /// A handle for communicating with an actor
 #[async_trait]
-pub trait ActorHandle<M: Sized + Send + 'static>: Sized + Send + 'static {
-  fn from_sender(sender: Sender<ActorMessage<M>>) -> Self;
+pub trait ActorHandle: Clone + Sized + Send + 'static {
+  type Message: Sized + Send + 'static;
+
   async fn send_raw_message(
     &mut self,
-    message: ActorMessage<M>,
-  ) -> Result<(), SendError<ActorMessage<M>>>;
-  async fn stop_actor(&mut self) -> Result<(), SendError<ActorMessage<M>>> {
-    self.send_raw_message(ActorMessage::StopActor).await
+    message: ActorMessage<Self::Message>,
+  ) -> Result<(), SendError<ActorMessage<Self::Message>>>;
+
+  async fn stop_actor(&mut self) -> Result<(), ()> {
+    match self.send_raw_message(ActorMessage::StopActor).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
+  }
+}
+
+impl<M: Sized + Send + 'static> Clone for ActorHandleStruct<M> {
+  fn clone(&self) -> Self {
+    Self {
+      sender: self.sender.clone(),
+    }
   }
 }
 
 #[async_trait]
-impl<M: Sized + Send + 'static> ActorHandle<M> for ActorHandleStruct<M> {
-  fn from_sender(sender: Sender<ActorMessage<M>>) -> Self {
-    Self { sender }
-  }
+impl<M: Sized + Send + 'static> ActorHandle for ActorHandleStruct<M> {
+  type Message = M;
   async fn send_raw_message(
     &mut self,
     message: ActorMessage<M>,
@@ -79,3 +101,20 @@ impl<M: Sized + Send + 'static> ActorHandle<M> for ActorHandleStruct<M> {
     self.sender.send(message).await
   }
 }
+
+impl<M: Sized + Send + 'static> From<Sender<ActorMessage<M>>> for ActorHandleStruct<M> {
+  fn from(sender: Sender<ActorMessage<M>>) -> Self {
+    Self { sender }
+  }
+}
+
+/*
+// Not supported yet
+default<T: CreateHandle> impl Actor for T {
+  fn spawn_actor(mut self) -> (JoinHandle<Self>, Self::Handle) {
+    let (mut send, recv) = channel(Self::BUFFER_SIZE);
+    let fut = tokio::spawn(async move { self.start_actor(recv).await });
+    (fut, Self::Handle::from_sender(send))
+  }
+}
+*/

@@ -1,29 +1,25 @@
-use std::error::Error;
-use crate::packet::{PacketSerialIn,data::read};
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 
 #[derive(Debug)]
 pub struct Request {}
 
 #[derive(Debug)]
 pub struct Ping {
-    pub payload: u64
+    pub payload: u64,
 }
 
 impl PacketSerialIn for Request {
     const ID: u32 = 0x00;
-    fn read(_buffer: &mut Vec<u8>) -> Result<Request, Box<dyn Error>> {
-        Ok(Request {})
-    }
-    fn consume_read(_buffer: Vec<u8>) -> Result<Request, Box<dyn Error>> {
+    fn read(_buffer: &mut &[u8]) -> Result<Request, PacketParsingError> {
         Ok(Request {})
     }
 }
 
 impl PacketSerialIn for Ping {
     const ID: u32 = 0x01;
-    fn consume_read(mut buffer: Vec<u8>) -> Result<Ping, Box<dyn Error>> {
+    fn read(buffer: &mut &[u8]) -> Result<Ping, PacketParsingError> {
         Ok(Ping {
-            payload: read::u64(&mut buffer)?
+            payload: read::u64(buffer)?,
         })
     }
 }

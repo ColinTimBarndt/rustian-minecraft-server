@@ -1,5 +1,5 @@
 use super::super::send;
-use crate::packet::{data::read, PacketSerialIn};
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 use std::convert::TryInto;
 
 /// # Held Item Change (serverbound)
@@ -13,9 +13,12 @@ pub struct HeldItemChange {
 
 impl PacketSerialIn for HeldItemChange {
   const ID: u32 = 0x23;
-  fn consume_read(mut buffer: Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
+  fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     Ok(Self {
-      hotbar_slot: read::u16(&mut buffer)?.try_into()?,
+      hotbar_slot: match read::u16(buffer)?.try_into() {
+        Ok(slot) => slot,
+        Err(e) => return Err(PacketParsingError::InvalidPacket(e.to_string())),
+      },
     })
   }
 }

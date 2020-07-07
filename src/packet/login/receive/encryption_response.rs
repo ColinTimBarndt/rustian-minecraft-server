@@ -1,5 +1,4 @@
-use crate::packet::{data::read, PacketSerialIn};
-use std::error::Error;
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 
 #[derive(Debug)]
 /// # Encryption Response
@@ -13,12 +12,12 @@ pub struct EncryptionResponse {
 
 impl PacketSerialIn for EncryptionResponse {
   const ID: u32 = 0x01;
-  fn consume_read(mut buffer: Vec<u8>) -> Result<EncryptionResponse, Box<dyn Error>> {
-    let sl = read::var_u32(&mut buffer)? as usize;
-    let s_secret = buffer.drain(0..sl).collect();
+  fn read(buffer: &mut &[u8]) -> Result<EncryptionResponse, PacketParsingError> {
+    let sl = read::var_u32(buffer)? as usize;
+    let s_secret = read::byte_vec(buffer, sl)?;
 
-    let tl = read::var_u32(&mut buffer)? as usize;
-    let v_token = buffer.drain(0..tl).collect();
+    let tl = read::var_u32(buffer)? as usize;
+    let v_token = read::byte_vec(buffer, tl)?;
 
     Ok(Self {
       shared_secret: s_secret,

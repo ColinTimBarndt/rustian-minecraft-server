@@ -10,10 +10,12 @@ pub struct DamageableItemMeta {
 impl super::ItemMeta for DamageableItemMeta {
   fn apply_meta(&self, tag: &mut nbt::Blob) {
     if let Some(damage) = &self.damage {
-      tag.insert("Damage", Value::Int(*damage));
+      tag.insert("Damage", Value::Int(*damage)).unwrap();
     }
     if let Some(unbreakable) = &self.unbreakable {
-      tag.insert("Unbreakable", Value::Byte(*unbreakable as i8));
+      tag
+        .insert("Unbreakable", Value::Byte(*unbreakable as i8))
+        .unwrap();
     }
   }
 }

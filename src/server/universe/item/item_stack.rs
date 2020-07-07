@@ -141,7 +141,9 @@ impl ItemData {
       if let Some(meta) = &self.block_meta {
         meta.apply_meta(&mut blob);
       }
-      blob.to_writer(buffer);
+      blob
+        .to_writer(buffer)
+        .expect("[item_stack.rs] Failed to write NBT to buffer");
     } else {
       buffer.push(0);
     }

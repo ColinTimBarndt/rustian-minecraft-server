@@ -1,7 +1,7 @@
 use crate::helpers::{BitArray, NibbleArray4096};
 use crate::packet::{data::write, PacketSerialOut};
 use crate::server::universe::world::ChunkSection;
-use crate::server::universe::world::{block, Chunk, ChunkPosition};
+use crate::server::universe::world::{blocks, Chunk, ChunkPosition};
 use std::mem;
 extern crate nbt;
 use nbt::Value;
@@ -123,7 +123,7 @@ impl ChunkSectionData {
       }
     } else {
       // Global palette
-      write::var_u32(buffer, block::blocks::USED_PALETTE_BITS as u32);
+      write::var_u8(buffer, blocks::USED_PALETTE_BITS);
     }
     let block_data: Vec<u64> = self.blocks.into();
     write::var_usize(buffer, block_data.len());

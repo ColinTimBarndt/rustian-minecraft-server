@@ -8,6 +8,7 @@
 | ---------------- | -------------------------------------------------- |
 | Shutdown         | Shuts down the server                              |
 | PlayerDisconnect | Notifies the server that a player has disconnected |
+| GetUniverse      | Gets the universe of a player                      |
 
 ## 🧍 Player PacketHandler
 

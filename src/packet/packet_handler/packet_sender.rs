@@ -123,7 +123,7 @@ impl PacketSender {
         // Send packet
         //#[cfg(debug_sending_packets)]
         println!(
-            "{}: {:X} ({}) {}",
+            "{}: {:#02X} ({}) {}",
             "▶ Sending packet".color(Color::DarkGray),
             //self.state,
             packet_id,

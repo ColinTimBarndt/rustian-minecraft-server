@@ -317,6 +317,20 @@ file.newLine();
 // Block enum Registry functions
 {
   let impl = new lib.ImplGenerator(file, "Block", "Registry");
+  // fn get_id(&self) -> usize
+  {
+    let fn = new lib.FunctionGenerator(impl, "get_id", "usize");
+    fn.addParam("&self");
+    fn.writeLine("(*self).to_state()");
+    fn.finish();
+  }
+  // fn from_id(id: usize) -> Option<Self>
+  {
+    let fn = new lib.FunctionGenerator(impl, "from_id", "Option<Self>");
+    fn.addParam("id", "usize");
+    fn.writeLine("Self::from_state(id)");
+    fn.finish();
+  }
   // fn get_registry_key(&self) -> NamespacedKey
   {
     let fn = new lib.FunctionGenerator(
@@ -394,12 +408,12 @@ file.newLine();
             stateName += "Data";
             hashMatch.addMatchArm(
               "" + hash,
-              `if(*key.key() == "${key.id}") {Self::${camelCaseName}(${stateName}::default())} else {return None;}`
+              `if *key.key() == "${key.id}" {Self::${camelCaseName}(${stateName}::default())} else {return None;}`
             );
           } else {
             hashMatch.addMatchArm(
               "" + hash,
-              `if(*key.key() == "${key.id}") {Self::${camelCaseName}} else {return None;}`
+              `if *key.key() == "${key.id}" {Self::${camelCaseName}} else {return None;}`
             );
           }
         });

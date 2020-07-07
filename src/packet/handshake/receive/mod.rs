@@ -1,23 +1,22 @@
-use std::error::Error;
-use crate::packet::{PacketSerialIn, PacketParsingError, PlayerConnectionState};
+use crate::packet::{PacketParsingError, PacketSerialIn, PlayerConnectionState};
 
 #[derive(Debug)]
 pub struct Handshake {
     pub version: u32,
     pub address: String,
     pub port: u16,
-    pub next_state: PlayerConnectionState
+    pub next_state: PlayerConnectionState,
 }
 
 impl PacketSerialIn for Handshake {
     const ID: u32 = 0x00;
-    fn consume_read(mut buffer: Vec<u8>) -> Result<Self, Box<dyn Error>> {
+    fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
         use crate::packet::data::read;
 
-        let ver = read::var_i32(&mut buffer)?;
-        let addrstr = read::string(&mut buffer)?;
-        let port = read::u16(&mut buffer)?;
-        let next = read::var_i32(&mut buffer)?;
+        let ver = read::var_i32(buffer)?;
+        let addrstr = read::string(buffer)?;
+        let port = read::u16(buffer)?;
+        let next = read::var_i32(buffer)?;
 
         Ok(Handshake {
             version: ver as u32,
@@ -26,10 +25,13 @@ impl PacketSerialIn for Handshake {
             next_state: match next {
                 1 => PlayerConnectionState::Status,
                 2 => PlayerConnectionState::Login,
-                x => return Err(Box::new(PacketParsingError::InvalidPacket(
-                    format!("Invalid next state: {}", x)
-                )))
-            }
+                x => {
+                    return Err(PacketParsingError::InvalidPacket(format!(
+                        "Invalid next state: {}",
+                        x
+                    )))
+                }
+            },
         })
     }
 }

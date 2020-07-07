@@ -1,6 +1,6 @@
 // Based on: https://github.com/feather-rs/feather/blob/develop/core/src/chunk.rs
 
-use super::{block::blocks, Block};
+use super::{blocks, Block};
 use crate::helpers::{BitArray, NibbleArray4096, Vec3d};
 use std::ops;
 
@@ -40,24 +40,26 @@ impl Chunk {
     }
   }
   pub fn get_block_at_pos(&self, offset: Vec3d<u8>) -> Block {
-    let y_index = (offset.get_y_as_ref() >> 4) as usize;
+    let y_index = (offset.get_y() >> 4) as usize;
     let section = &self.sections[y_index];
     match section {
-      Some(section) => section.get_block_at_pos(offset.get_x(), offset.get_y(), offset.get_z()),
+      Some(section) => {
+        section.get_block_at_pos(offset.get_x(), offset.get_y() % 16, offset.get_z())
+      }
       None => Block::Air,
     }
   }
   pub fn set_block_at_pos(&mut self, offset: Vec3d<u8>, block: Block) {
-    let y_index = (offset.get_y_as_ref() >> 4) as usize;
+    let y_index = (offset.get_y() >> 4) as usize;
     let section = &mut self.sections[y_index];
     if let Some(section) = section.as_mut() {
-      section.set_block_at_pos(offset.get_x(), offset.get_y(), offset.get_z(), block);
+      section.set_block_at_pos(offset.get_x(), offset.get_y() % 16, offset.get_z(), block);
       if section.is_empty() {
         self.sections[y_index] = None;
       }
     } else {
       let mut section = ChunkSection::default();
-      section.set_block_at_pos(offset.get_x(), offset.get_y(), offset.get_z(), block);
+      section.set_block_at_pos(offset.get_x(), offset.get_y() % 16, offset.get_z(), block);
       self.sections[y_index] = Some(section);
     }
   }
@@ -446,4 +448,30 @@ fn position_to_index_usize(x: u8, y: u8, z: u8) -> usize {
   assert!(y < 16);
   assert!(z < 16);
   ((y as usize) << 8) | ((z as usize) << 4) | x as usize
+}
+
+#[cfg(test)]
+mod tests {
+  use super::blocks::BarrelData;
+  use super::*;
+  #[test]
+  fn chunk_test() {
+    let mut chunk = Chunk::new_empty(ChunkPosition::new(0, 0));
+
+    {
+      let mut b_data: BarrelData = Default::default();
+      b_data.open = true;
+      println!("Before: {:#?}", b_data);
+      chunk.set_block_at_pos(Vec3d::new(5, 18, 2), Block::Barrel(b_data));
+    }
+    {
+      let block = chunk.get_block_at_pos(Vec3d::new(5, 18, 2));
+      println!("After: {:#?}", block);
+      if let Block::Barrel(b_data) = block {
+        assert_eq!(b_data.open, true);
+      } else {
+        panic!("Incorrect Block");
+      }
+    }
+  }
 }

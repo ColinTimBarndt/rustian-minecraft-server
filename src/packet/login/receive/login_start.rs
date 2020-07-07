@@ -1,5 +1,4 @@
-use crate::packet::{data::read, PacketSerialIn};
-use std::error::Error;
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 
 #[derive(Debug)]
 /// # Login Start
@@ -11,9 +10,9 @@ pub struct LoginStart {
 
 impl PacketSerialIn for LoginStart {
   const ID: u32 = 0x00;
-  fn consume_read(mut buffer: Vec<u8>) -> Result<LoginStart, Box<dyn Error>> {
+  fn read(buffer: &mut &[u8]) -> Result<LoginStart, PacketParsingError> {
     Ok(Self {
-      name: read::string(&mut buffer)?,
+      name: read::string(buffer)?,
     })
   }
 }

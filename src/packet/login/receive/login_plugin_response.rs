@@ -1,5 +1,4 @@
-use crate::packet::{data::read, PacketSerialIn};
-use std::error::Error;
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 
 #[derive(Debug)]
 /// # Login Plugin Response
@@ -15,14 +14,14 @@ pub struct LoginPluginResponse {
 
 impl PacketSerialIn for LoginPluginResponse {
   const ID: u32 = 0x02;
-  fn consume_read(mut buffer: Vec<u8>) -> Result<LoginPluginResponse, Box<dyn Error>> {
-    let m_id = read::var_u32(&mut buffer)?;
-    let successful = read::bool(&mut buffer)?;
+  fn read(buffer: &mut &[u8]) -> Result<LoginPluginResponse, PacketParsingError> {
+    let m_id = read::var_u32(buffer)?;
+    let successful = read::bool(buffer)?;
     Ok(Self {
       message_identifier: m_id,
       successful: successful,
       data: if successful {
-        Some(buffer.drain(0..buffer.len()).collect())
+        Some(read::byte_vec(buffer, buffer.len())?)
       } else {
         None
       },

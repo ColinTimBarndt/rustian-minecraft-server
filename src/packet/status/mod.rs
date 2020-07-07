@@ -1,9 +1,8 @@
 use crate::packet::{
     packet_handler::PacketParsingError, PacketHandlerMessage, PacketReceiver, PacketSerialIn,
 };
-use std::error::Error;
-#[macro_use]
 use crate::send_packet;
+use std::error::Error;
 
 pub mod receive;
 pub mod send;
@@ -11,7 +10,7 @@ pub mod send;
 pub async fn handle(
     receiver: &mut PacketReceiver,
     id: u32,
-    buffer: Vec<u8>,
+    mut buffer: &[u8],
 ) -> Result<(), Box<dyn Error>> {
     match id {
         receive::Request::ID => {
@@ -19,7 +18,7 @@ pub async fn handle(
             use receive::Request;
             use send::Response;
 
-            Request::consume_read(buffer)?;
+            Request::read(&mut buffer)?;
             //#[cfg(debug_status_packets)]
             {
                 //println!("Client requested the server status");
@@ -33,7 +32,7 @@ pub async fn handle(
             use receive::Ping;
             use send::Pong;
 
-            let packet = Ping::consume_read(buffer)?;
+            let packet = Ping::read(&mut buffer)?;
             //#[cfg(debug_status_packets)]
             {
                 //println!("Client sent a ping, answering with pong");

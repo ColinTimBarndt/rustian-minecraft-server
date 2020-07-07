@@ -1,5 +1,5 @@
 use crate::helpers::NamespacedKey;
-use crate::packet::{data::read, PacketSerialIn};
+use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
 
 /// # Plugin Message (serverbound)
 /// [Documentation](https://wiki.vg/Protocol#Plugin_Message_.28serverbound.29)
@@ -18,13 +18,16 @@ pub struct PluginMessage {
 
 impl PacketSerialIn for PluginMessage {
     const ID: u32 = 0x0B;
-    fn consume_read(mut buffer: Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
+    fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
         use std::convert::TryInto;
         Ok(Self {
-            channel: read::string(&mut buffer)?.try_into()?,
+            channel: match read::string(buffer)?.try_into() {
+                Ok(ch) => ch,
+                Err(err) => return Err(PacketParsingError::InvalidPacket(err.to_string())),
+            },
             data: {
-                let len = read::var_u32(&mut buffer)? as usize;
-                buffer[0..len].into()
+                let len = read::var_u32(buffer)? as usize;
+                read::byte_vec(buffer, len)?
             },
         })
     }

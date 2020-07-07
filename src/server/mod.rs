@@ -1,3 +1,4 @@
+use crate::actor_model::*;
 use crate::packet::PlayerConnection;
 use futures::{future::FutureExt, select};
 use openssl::pkey::Private;
@@ -8,15 +9,18 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
+use tokio::sync::oneshot;
+use uuid::Uuid;
 
 pub mod registries;
 pub mod universe;
 
 pub struct MinecraftServer {
     pub address: SocketAddr,
-    listener: TcpListener,
-    connections: HashMap<SocketAddr, PlayerConnection>,
+    pub listener: TcpListener,
+    pub connections: HashMap<SocketAddr, PlayerConnection>,
     pub key_pair: Arc<Rsa<Private>>,
+    pub universe: universe::UniverseHandle,
 }
 
 impl MinecraftServer {
@@ -27,29 +31,25 @@ impl MinecraftServer {
 
         println!("=== PUBLIC KEY ===");
         for byte in private_key.public_key_to_der()? {
-            if byte < 0x10 {
-                print!("0{:X}", byte);
-            } else {
-                print!("{:X}", byte);
-            }
+            print!("{:02X}", byte);
         }
         println!("\n=== END PUBLIC KEY ===");
+
+        let universe = universe::Universe::new();
+        let (_, u_handle) = universe.spawn_actor();
 
         let server = MinecraftServer {
             address: addr,
             listener: listener,
             connections: HashMap::new(),
             key_pair: Arc::new(private_key),
+            universe: u_handle,
         };
 
         return Ok(server);
     }
 
-    pub fn create_player() -> u32 {
-        0
-    }
-
-    pub fn listen(mut self) -> (MinecraftServerHandle, tokio::task::JoinHandle<()>) {
+    pub fn listen(self) -> (MinecraftServerHandle, tokio::task::JoinHandle<()>) {
         /*tokio::run(self.listener.incoming()
             .map_err(|e| eprintln!("Failed to accept connection: {:?}", e))
             .for_each(|socket| {
@@ -150,6 +150,14 @@ impl MinecraftServer {
                 println!("Disconnect from {}", addr);
                 self.connections.remove(&addr);
             }
+            MinecraftServerHandleMessage::GetUniverse(_uuid, sender) => {
+                match sender.send(self.universe.clone()) {
+                    Ok(_) => (),
+                    Err(_) => {
+                        eprintln!("[server/mod.rs] Failed to send universe handle");
+                    }
+                }
+            }
         }
         true
     }
@@ -186,4 +194,5 @@ impl MinecraftServerHandle {
 pub enum MinecraftServerHandleMessage {
     Shutdown,
     PlayerDisconnect(SocketAddr),
+    GetUniverse(Uuid, oneshot::Sender<universe::UniverseHandle>),
 }

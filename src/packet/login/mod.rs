@@ -1,9 +1,8 @@
 use crate::packet::{
     PacketHandlerMessage, PacketParsingError, PacketReceiver, PacketSerialIn, PlayerConnectionState,
 };
-use std::error::Error;
-#[macro_use]
 use crate::send_packet;
+use std::error::Error;
 
 pub mod receive;
 pub mod send;
@@ -11,7 +10,7 @@ pub mod send;
 pub async fn handle(
     receiver: &mut PacketReceiver,
     id: u32,
-    buffer: Vec<u8>,
+    mut buffer: &[u8],
 ) -> Result<(), Box<dyn Error>> {
     match id {
         receive::LoginStart::ID => {
@@ -19,7 +18,7 @@ pub async fn handle(
             use receive::LoginStart;
             use send::EncryptionRequest;
 
-            let packet = LoginStart::consume_read(buffer)?;
+            let packet = LoginStart::read(&mut buffer)?;
             receiver.login_name = Some(packet.name);
             //println!("User attempts to log in: {}", packet.name);
             let key = receiver.key.as_ref().unwrap();
@@ -46,7 +45,7 @@ pub async fn handle(
             use receive::EncryptionResponse;
             use send::LoginSuccess;
 
-            let packet = EncryptionResponse::consume_read(buffer)?;
+            let packet = EncryptionResponse::read(&mut buffer)?;
             //println!("User responded to encryption request");
             let key = receiver.key.as_ref().unwrap();
             let mut verify_token = vec![0; key.size() as usize];
@@ -93,6 +92,7 @@ pub async fn handle(
                 receiver.state = PlayerConnectionState::Play;
                 receiver.verify_token = None;
                 receiver.key = None;
+                receiver.last_ping = Some(tokio::time::Instant::now());
 
                 // Continue login squence
                 use crate::packet::play::send::JoinGame;
