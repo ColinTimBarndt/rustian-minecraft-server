@@ -1,6 +1,5 @@
 use crate::server::registries::RecipeSerializer;
 use crate::server::universe::item::ItemStack;
-use crate::server::universe::SharedPlayer;
 use std::collections::HashSet;
 
 mod crafting_shapeless;
@@ -13,8 +12,8 @@ pub trait Recipe {
 
 pub trait CraftingRecipe: Recipe {
   // TODO: Implement pattern recognition
-  fn is_recipe_for(grid: CraftingGrid, context: Option<SharedPlayer>) -> bool;
-  fn get_result_for(grid: CraftingGrid, context: Option<SharedPlayer>) -> ItemStack;
+  fn is_recipe_for(grid: CraftingGrid) -> bool;
+  fn get_result_for(grid: CraftingGrid) -> ItemStack;
 }
 
 #[derive(Clone, Debug)]

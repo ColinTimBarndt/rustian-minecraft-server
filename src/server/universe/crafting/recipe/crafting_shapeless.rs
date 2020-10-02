@@ -1,7 +1,7 @@
 use super::CraftingGrid;
 use crate::packet::data::write;
 use crate::server::registries::RecipeSerializer;
-use crate::server::universe::{item::ItemStack, SharedPlayer};
+use crate::server::universe::item::ItemStack;
 
 pub struct ShapelessCraftingRecipe {
   pub group: String,
@@ -22,10 +22,10 @@ impl super::Recipe for ShapelessCraftingRecipe {
 }
 
 impl super::CraftingRecipe for ShapelessCraftingRecipe {
-  fn is_recipe_for(_grid: CraftingGrid, _context: Option<SharedPlayer>) -> bool {
+  fn is_recipe_for(_grid: CraftingGrid) -> bool {
     unimplemented!(); // TODO
   }
-  fn get_result_for(_grid: CraftingGrid, _context: Option<SharedPlayer>) -> ItemStack {
+  fn get_result_for(_grid: CraftingGrid) -> ItemStack {
     unimplemented!(); // TODO
   }
 }

@@ -1,6 +1,5 @@
 use crate::helpers::chat_components::ChatComponent;
 use crate::packet::{data::write, PacketSerialOut};
-use json::JsonValue;
 
 /// # Chat Message (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Chat_Message_.28clientbound.29)
@@ -10,19 +9,19 @@ use json::JsonValue;
 /// [processing chat](https://wiki.vg/Chat#Processing_chat) for more info about
 /// these positions.
 #[derive(Clone, Debug)]
-pub struct ChatMessage {
-  pub message: Vec<ChatComponent>,
+pub struct ChatMessage<'a> {
+  pub message: &'a [ChatComponent],
   pub message_type: ChatMessageType,
 }
 
-impl ChatMessage {
-  pub fn from_single_component(msg: ChatComponent, msg_type: ChatMessageType) -> Self {
+impl<'a: 'b, 'b> ChatMessage<'b> {
+  pub fn from_component(msg: &'a ChatComponent, msg_type: ChatMessageType) -> Self {
     Self {
-      message: vec![msg],
+      message: std::slice::from_ref(msg),
       message_type: msg_type,
     }
   }
-  pub fn from_components(msg: Vec<ChatComponent>, msg_type: ChatMessageType) -> Self {
+  pub fn from_components(msg: &'a [ChatComponent], msg_type: ChatMessageType) -> Self {
     Self {
       message: msg,
       message_type: msg_type,
@@ -30,13 +29,10 @@ impl ChatMessage {
   }
 }
 
-impl PacketSerialOut for ChatMessage {
+impl PacketSerialOut for ChatMessage<'_> {
   const ID: u32 = 0x0F;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
-    write::json(
-      buffer,
-      &JsonValue::Array(self.message.iter().map(|part| part.make_json()).collect()),
-    );
+    write::chat_components(buffer, self.message);
     write::u8(buffer, self.message_type as u8);
     Ok(())
   }

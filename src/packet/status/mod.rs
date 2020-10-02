@@ -1,7 +1,6 @@
 use crate::packet::{
     packet_handler::PacketParsingError, PacketHandlerMessage, PacketReceiver, PacketSerialIn,
 };
-use crate::send_packet;
 use std::error::Error;
 
 pub mod receive;
@@ -24,7 +23,7 @@ pub async fn handle(
                 //println!("Client requested the server status");
             }
             let answer = Response::new();
-            send_packet!(answer => receiver.send_packet)?;
+            receiver.send_packet(answer).await?;
             Ok(())
         }
         receive::Ping::ID => {
@@ -38,7 +37,7 @@ pub async fn handle(
                 //println!("Client sent a ping, answering with pong");
             }
             let answer = Pong::new(packet.payload);
-            send_packet!(answer => receiver.send_packet)?;
+            receiver.send_packet(answer).await?;
             receiver
                 .handler_channel
                 .send(PacketHandlerMessage::CloseChannel)

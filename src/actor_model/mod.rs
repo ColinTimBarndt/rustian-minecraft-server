@@ -11,12 +11,13 @@ pub trait Actor: Sized + std::fmt::Display + 'static {
   type Handle: ActorHandle;
   const BUFFER_SIZE: usize = 100;
 
-  fn spawn_actor(/*mut*/ self) -> (JoinHandle<Self>, Self::Handle)
+  fn spawn_actor(mut self) -> (JoinHandle<Self>, Self::Handle)
   where
     Self: Send + 'static,
   {
     let (send, recv) = channel(Self::BUFFER_SIZE);
     let handle = self.create_handle(send);
+    self.set_handle(handle.clone());
     let fut = tokio::spawn(async move { self.start_actor(recv).await });
     (fut, handle)
   }
@@ -51,6 +52,14 @@ pub trait Actor: Sized + std::fmt::Display + 'static {
     &self,
     _sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
   ) -> Self::Handle;
+
+  /// Stores the handle of this actor for future use
+  fn set_handle(&mut self, handle: Self::Handle);
+
+  /// Gets the stored handle. This function should panic
+  /// if the actor has not been spawned and it should
+  /// only be used inside the `handle_message` function.
+  fn clone_handle(&self) -> Self::Handle;
 }
 
 /// A message an actor can receive

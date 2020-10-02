@@ -1,5 +1,5 @@
 use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
-use crate::server::universe::{
+use crate::server::universe::entity::player::{
     DisplayedPlayerModelParts, PlayerChatMode, PlayerHand, PlayerSettings,
 };
 

@@ -4,6 +4,15 @@ pub trait ChunkGenerator: Send + 'static {
     fn generate(&mut self, pos: ChunkPosition) -> Chunk;
 }
 
+impl<T> From<Box<T>> for Box<dyn ChunkGenerator>
+where
+    T: ChunkGenerator,
+{
+    fn from(from: Box<T>) -> Box<dyn ChunkGenerator> {
+        from as Box<dyn ChunkGenerator>
+    }
+}
+
 /// Generates chunks based on layers
 pub struct FlatWorldGenerator {
     layers: Vec<(Block, u8)>,
@@ -34,5 +43,21 @@ impl ChunkGenerator for FlatWorldGenerator {
                 }
             }
         }
+    }
+}
+
+/// Generates all chunks by copying the template
+pub struct TemplateChunkGenerator {
+    template: Chunk,
+}
+
+impl TemplateChunkGenerator {
+    pub fn new(template: Chunk) -> Self {
+        Self { template }
+    }
+}
+impl ChunkGenerator for TemplateChunkGenerator {
+    fn generate(&mut self, pos: ChunkPosition) -> Chunk {
+        self.template.copy(pos)
     }
 }

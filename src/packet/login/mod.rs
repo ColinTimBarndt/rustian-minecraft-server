@@ -1,7 +1,8 @@
+use crate::helpers::mojang_api;
 use crate::packet::{
     PacketHandlerMessage, PacketParsingError, PacketReceiver, PacketSerialIn, PlayerConnectionState,
 };
-use crate::send_packet;
+use crate::server::universe::entity::EntityActorHandle;
 use std::error::Error;
 
 pub mod receive;
@@ -37,7 +38,7 @@ pub async fn handle(
                 }
             }
             println!();*/
-            send_packet!(answer => receiver.send_packet)?;
+            receiver.send_packet(answer).await?;
             Ok(())
         }
         receive::EncryptionResponse::ID => {
@@ -67,28 +68,110 @@ pub async fn handle(
             let correct_token = verify_token == *receiver.verify_token.as_ref().unwrap();
             //println!("\nVerify Token correct: {}", correct_token);
             if correct_token {
-                let user_uuid = uuid::Uuid::new_v4();
                 let user_name = receiver.login_name.as_ref().unwrap().clone();
+                // Get User from Mojang API
+                let profile = match mojang_api::has_joined(
+                    "",
+                    &shared_secret,
+                    key,
+                    &user_name,
+                    &receiver.address,
+                )
+                .await
+                {
+                    Ok(Some(p)) => p,
+                    Ok(None) => {
+                        use crate::helpers::chat_components::{
+                            ChatColor, ChatComponent, ChatComponentType,
+                        };
+                        receiver
+                            .send_packet(send::Disconnect::from(
+                                &ChatComponent::new(ChatComponentType::Translate {
+                                    key: "disconnect.loginFailedInfo.invalidSession".into(),
+                                    with: vec![],
+                                })
+                                .set_color(ChatColor::Red),
+                            ))
+                            .await?;
+                        receiver
+                            .handler_channel
+                            .send(PacketHandlerMessage::CloseChannel)
+                            .await?;
+                        return Ok(());
+                    }
+                    Err(mojang_api::Error::MalformedResponse) => {
+                        use crate::helpers::chat_components::{
+                            ChatColor, ChatComponent, ChatComponentType,
+                        };
+                        receiver
+                            .send_packet(send::Disconnect::from(
+                                &ChatComponent::new(ChatComponentType::Translate {
+                                    key: "disconnect.loginFailedInfo".into(),
+                                    with: vec![ChatComponent::text(
+                                        "Malformed response from the authentication server",
+                                    )],
+                                })
+                                .set_color(ChatColor::Red),
+                            ))
+                            .await?;
+                        receiver
+                            .handler_channel
+                            .send(PacketHandlerMessage::CloseChannel)
+                            .await?;
+                        return Ok(());
+                    }
+                    Err(mojang_api::Error::ServiceUnavailable) => {
+                        use crate::helpers::chat_components::{
+                            ChatColor, ChatComponent, ChatComponentType,
+                        };
+                        receiver
+                            .send_packet(send::Disconnect::from(
+                                &ChatComponent::new(ChatComponentType::Translate {
+                                    key: "disconnect.loginFailedInfo.serversUnavailable".into(),
+                                    with: vec![],
+                                })
+                                .set_color(ChatColor::Red),
+                            ))
+                            .await?;
+                        receiver
+                            .handler_channel
+                            .send(PacketHandlerMessage::CloseChannel)
+                            .await?;
+                        return Ok(());
+                    }
+                };
+                let user_uuid = profile.uuid.clone();
+                //
                 let answer = LoginSuccess {
                     uuid: user_uuid.clone(),
                     username: user_name.clone(),
                 };
+                println!("Profile: {:#?}", profile);
                 // TODO: Create a unique EID
-                let player_entity_id = 1234u32;
-                {
-                    use std::sync::Arc;
-                    use tokio::sync::RwLock;
-                    receiver.player =
-                        Some(Arc::new(RwLock::new(crate::server::universe::Player::new(
+                let mut player = {
+                    let (send, recv) = tokio::sync::oneshot::channel();
+                    receiver
+                        .handler_channel
+                        .send(super::PacketHandlerMessage::GetServer(send))
+                        .await?;
+                    let mut server = recv.await?;
+                    let mut universe = server.get_universe(user_uuid.clone()).await?;
+                    let mut world = universe
+                        .join_world(user_uuid.clone())
+                        .await
+                        .map_err(|_| "Failed to join a world")?;
+                    world
+                        .spawn_entity_player_online(
                             receiver.create_player_connection_handle(),
-                            user_name,
-                            user_uuid,
-                            player_entity_id,
-                        ))));
-                }
+                            profile,
+                        )
+                        .await
+                        .map_err(|_| "Failed to spawn player")?
+                };
+                receiver.player = Some(player.clone());
                 receiver.login_name = None;
                 receiver.set_encryption(shared_secret).await?;
-                send_packet!(answer => receiver.send_packet)?;
+                receiver.send_packet(answer).await?;
                 receiver.state = PlayerConnectionState::Play;
                 receiver.verify_token = None;
                 receiver.key = None;
@@ -101,7 +184,7 @@ pub async fn handle(
                     Gamemode::*,
                 };
                 let join_game_packet = JoinGame {
-                    entity_id: player_entity_id,
+                    entity_id: player.get_id(),
                     gamemode: Creative,
                     dimension: Overworld,
                     seed_hash: 0,
@@ -110,19 +193,25 @@ pub async fn handle(
                     reduced_debug_info: false,
                     show_respawn_screen: true,
                 };
-                send_packet!(join_game_packet => receiver.send_packet)?;
+                receiver.send_packet(join_game_packet).await?;
                 use crate::helpers::NamespacedKey;
-                send_packet!(super::play::send::PluginMessage {
-                    channel: NamespacedKey::new("minecraft", "brand"),
-                    data: b"rustian".to_vec()
-                } => receiver.send_packet)?;
-                send_packet!(super::play::send::Difficulty {
-                    difficulty: crate::server::universe::world::Difficulty::Hard,
-                    locked: false
-                } => receiver.send_packet)?;
-                send_packet!(super::play::send::PlayerAbilities {
-                    ..std::default::Default::default()
-                } => receiver.send_packet)?;
+                receiver
+                    .send_packet(super::play::send::PluginMessage {
+                        channel: NamespacedKey::new("minecraft", "brand"),
+                        data: b"rustian",
+                    })
+                    .await?;
+                receiver
+                    .send_packet(super::play::send::Difficulty {
+                        difficulty: crate::server::universe::world::Difficulty::Hard,
+                        locked: false,
+                    })
+                    .await?;
+                receiver
+                    .send_packet(super::play::send::PlayerAbilities {
+                        ..std::default::Default::default()
+                    })
+                    .await?;
             } else {
                 receiver
                     .handler_channel

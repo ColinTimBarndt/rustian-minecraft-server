@@ -1,12 +1,12 @@
 use super::{data, PacketHandlerMessage, PacketSenderMessage, PlayerConnectionState};
-use crate::send_packet;
-use crate::server::universe::SharedPlayer;
+use crate::server::universe::entity::player;
 use colorful::{Color, Colorful};
 use futures::{future, future::FutureExt, pin_mut, select_biased};
 use openssl::pkey::Private;
 use openssl::rsa::Rsa;
 use openssl::symm::*;
 use std::error::Error;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -34,8 +34,9 @@ pub struct PacketReceiver {
   pub key: Option<Arc<Rsa<Private>>>,
   pub verify_token: Option<Vec<u8>>,
   pub login_name: Option<String>,
-  pub player: Option<SharedPlayer>,
+  pub player: Option<player::online_controller::ControllerHandle>,
   pub logging_in: bool,
+  pub address: SocketAddr,
   pub(in crate::packet) last_ping: Option<time::Instant>,
   pub(in crate::packet) last_ping_received: time::Instant,
   pub(in crate::packet) last_ping_identifier: u64,
@@ -58,6 +59,7 @@ impl PacketReceiver {
     packet_sender: Sender<PacketSenderMessage>,
     handler_channel: Sender<PacketHandlerMessage>,
     key: Arc<Rsa<Private>>,
+    address: SocketAddr,
   ) -> Self {
     Self {
       reader: reader,
@@ -71,6 +73,7 @@ impl PacketReceiver {
       login_name: None,
       player: None,
       logging_in: true,
+      address,
       last_ping: None,
       last_ping_received: time::Instant::now(),
       last_ping_identifier: 0,
@@ -251,10 +254,15 @@ impl PacketReceiver {
   }
 
   /// Sends a packet
-  pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
+  pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), String>
+  where
+    P: crate::packet::PacketSerialOut + Sized,
+  {
+    let mut buffer: Vec<u8> = Vec::new();
+    packet.consume_write(&mut buffer)?;
     if let Err(e) = self
       .outgoing_channel
-      .send(PacketSenderMessage::Packet(id, buffer))
+      .send(PacketSenderMessage::Packet(P::ID, buffer))
       .await
     {
       return Err(format!("{}", e));
@@ -276,17 +284,17 @@ impl PacketReceiver {
     &mut self,
     msg: crate::helpers::chat_components::ChatComponent,
   ) -> Result<(), Box<dyn Error>> {
-    println!(
-      "[packet_receiver:204] Kicking: {}",
-      json::stringify(msg.make_json())
-    );
     use PlayerConnectionState::*;
     match self.state {
       Login => {
-        crate::send_packet!(crate::packet::login::send::Disconnect::from(msg) => self.send_packet)
+        self
+          .send_packet(crate::packet::login::send::Disconnect::from(&msg))
+          .await
       }
       Play => {
-        crate::send_packet!(crate::packet::play::send::Disconnect::from(msg) => self.send_packet)
+        self
+          .send_packet(crate::packet::play::send::Disconnect::from(&msg))
+          .await
       }
       _ => Ok(()),
     }?;
@@ -368,14 +376,14 @@ impl PacketReceiver {
     let intermediate_ping = now.saturating_duration_since(self.last_ping_received);
     if intermediate_ping.as_secs() > PING_TIMEOUT {
       use crate::helpers::chat_components::{ChatComponent, ChatComponentType};
-      send_packet!(crate::packet::play::send::Disconnect::from(
-        ChatComponent::new(
-          ChatComponentType::Translate{
-            key: "disconnect.timeout".to_string(),
-            with: vec![]
-          }
-        )
-      ) => self.send_packet)?;
+      self
+        .send_packet(crate::packet::play::send::Disconnect::from(
+          &ChatComponent::new(ChatComponentType::Translate {
+            key: "disconnect.timeout".into(),
+            with: vec![],
+          }),
+        ))
+        .await?;
       self.close_channel().await?;
       return Ok(());
     }
@@ -385,7 +393,7 @@ impl PacketReceiver {
       let packet = super::play::send::KeepAlive {
         keep_alive_id: self.last_ping_identifier,
       };
-      send_packet!(packet => self.send_packet)
+      self.send_packet(packet).await
     } else {
       Ok(())
     }
@@ -407,7 +415,7 @@ impl std::fmt::Display for PacketParsingError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
     use PacketParsingError::*;
     match self {
-      UnknownPacket(id) => write!(f, "Unknown packet {:02X}", id),
+      UnknownPacket(id) => write!(f, "Unknown packet {:#02X}", id),
       EndOfInput => write!(f, "Unexpected end of input"),
       VarNumberTooBig => write!(f, "Variable number is too big"),
       InvalidPacket(desc) => write!(f, "Invalid Packet: {}", desc),

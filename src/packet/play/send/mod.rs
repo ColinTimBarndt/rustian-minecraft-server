@@ -16,6 +16,9 @@ pub use keep_alive::*;
 mod player_abilities;
 pub use player_abilities::*;
 
+mod player_info;
+pub use player_info::*;
+
 mod unload_chunk;
 pub use unload_chunk::*;
 

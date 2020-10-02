@@ -16,6 +16,7 @@ const COORDINATE_SCALE: i32 = (REGION_CHUNK_WIDTH * super::CHUNK_BLOCK_WIDTH) as
 pub struct Region {
   position: RegionPosition,
   chunks: [Option<Chunk>; (REGION_CHUNK_WIDTH * REGION_CHUNK_WIDTH) as usize],
+  handle: Option<<Region as Actor>::Handle>,
 }
 
 impl Region {
@@ -312,6 +313,14 @@ impl Actor for Region {
     sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
   ) -> Self::Handle {
     sender.into()
+  }
+
+  fn set_handle(&mut self, handle: Self::Handle) {
+    self.handle = Some(handle);
+  }
+
+  fn clone_handle(&self) -> Self::Handle {
+    self.handle.as_ref().unwrap().clone()
   }
 }
 

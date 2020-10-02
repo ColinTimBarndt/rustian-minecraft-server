@@ -8,34 +8,25 @@ use crate::packet::{data::write, PacketSerialOut};
 /// These internal channels are in the minecraft namespace.
 ///
 /// More documentation on this: <http://dinnerbone.com/blog/2012/01/13/minecraft-plugin-channels-messaging/>
-pub struct PluginMessage {
+pub struct PluginMessage<'a> {
     pub channel: NamespacedKey,
-    pub data: Vec<u8>,
+    pub data: &'a [u8],
 }
 
-impl PacketSerialOut for PluginMessage {
+impl PacketSerialOut for PluginMessage<'_> {
     const ID: u32 = 0x19;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
-        let channel = format!("{}", self.channel);
+        let channel = self.channel.to_string();
         write::string(buffer, channel);
         write::var_u32(buffer, self.data.len() as u32);
-        buffer.extend(&self.data);
+        buffer.extend_from_slice(self.data);
         Ok(())
     }
     fn consume_write(mut self, buffer: &mut Vec<u8>) -> Result<(), String> {
-        let channel = format!("{}", self.channel);
+        let channel = self.channel.to_string();
         write::string(buffer, channel);
         write::var_u32(buffer, self.data.len() as u32);
-        buffer.extend(self.data);
+        buffer.extend_from_slice(self.data);
         Ok(())
-    }
-}
-
-impl std::convert::From<super::super::receive::PluginMessage> for PluginMessage {
-    fn from(other: super::super::receive::PluginMessage) -> Self {
-        Self {
-            channel: other.channel,
-            data: other.data,
-        }
     }
 }

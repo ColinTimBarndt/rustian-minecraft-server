@@ -1,20 +1,14 @@
+use crate::actor_model::Actor;
 use crate::server::registries::EntityType;
-use crate::server::universe::entity::player::online_controller::ControllerHandle as OnlinePlayerHandle;
-use crate::server::universe::entity::EntityActorHandle;
+use crate::server::universe::entity::player::online_controller::Controller as OnlinePlayer;
+use crate::server::universe::entity::{Entity, EntityActorHandle};
 use std::collections::HashMap;
+use tokio::task::JoinHandle;
 
+#[derive(Default)]
 pub struct EntityList {
   entity_types: HashMap<u32, EntityType>,
-  player: HashMap<u32, OnlinePlayerHandle>,
-}
-
-impl Default for EntityList {
-  fn default() -> Self {
-    Self {
-      entity_types: HashMap::new(),
-      player: HashMap::new(),
-    }
-  }
+  player_list: HashMap<u32, (JoinHandle<OnlinePlayer>, <OnlinePlayer as Actor>::Handle)>,
 }
 
 impl EntityList {
@@ -29,20 +23,35 @@ impl EntityList {
   }
 }
 
-pub trait EntityListEntity<Handle: EntityActorHandle> {
-  fn get(&self, id: u32) -> Option<&Handle>;
-  fn get_mut(&mut self, id: u32) -> Option<&mut Handle>;
-  fn set(&mut self, handle: Handle);
+pub trait EntityListEntry<T: Actor>
+where
+  <T as Actor>::Handle: EntityActorHandle,
+{
+  fn get(&self, id: u32) -> Option<&(JoinHandle<T>, T::Handle)>;
+  fn get_mut(&mut self, id: u32) -> Option<&mut (JoinHandle<T>, T::Handle)>;
+  fn insert(&mut self, handle: (JoinHandle<T>, T::Handle));
+  fn remove(&mut self, id: u32) -> Option<(JoinHandle<T>, T::Handle)>;
 }
 
-impl EntityListEntity<OnlinePlayerHandle> for EntityList {
-  fn get(&self, id: u32) -> Option<&OnlinePlayerHandle> {
-    self.player.get(&id)
-  }
-  fn get_mut(&mut self, id: u32) -> Option<&mut OnlinePlayerHandle> {
-    self.player.get_mut(&id)
-  }
-  fn set(&mut self, handle: OnlinePlayerHandle) {
-    self.player.insert(handle.get_id(), handle);
-  }
+macro_rules! register_entity {
+  ($var:ident = $ety:ident $ty:ty) => {
+    impl EntityListEntry<$ty> for EntityList {
+      fn get(&self, id: u32) -> Option<&(JoinHandle<$ty>, <$ty as Actor>::Handle)> {
+        self.$var.get(&id)
+      }
+      fn get_mut(&mut self, id: u32) -> Option<&mut (JoinHandle<$ty>, <$ty as Actor>::Handle)> {
+        self.$var.get_mut(&id)
+      }
+      fn insert(&mut self, handle: (JoinHandle<$ty>, <$ty as Actor>::Handle)) {
+        let id = handle.1.get_id();
+        self.entity_types.insert(id, EntityType::$ety);
+        self.$var.insert(id, handle);
+      }
+      fn remove(&mut self, id: u32) -> Option<(JoinHandle<$ty>, <$ty as Actor>::Handle)> {
+        self.$var.remove(&id)
+      }
+    }
+  };
 }
+
+register_entity!(player_list = Player OnlinePlayer);

@@ -4,9 +4,9 @@ pub mod receive;
 pub mod send;
 
 use crate::packet::{PacketParsingError, PacketReceiver, PacketSerialIn};
-use crate::send_packet;
 use std::error::Error;
 //extern crate colorful;
+use crate::server::universe::entity::EntityActorHandle;
 use colorful::{Color, Colorful};
 
 pub async fn handle(
@@ -74,22 +74,27 @@ pub async fn handle(
       let packet = ClientSettings::read(&mut buffer)?;
       // Get access to the player struct and apply the settings
       // TODO: Handle a change of settings AFTER the login sequence finished
-      let mut plock = receiver.player.as_ref().unwrap().write().await;
-      plock.settings = packet.settings;
-      drop(plock);
+      receiver
+        .player
+        .as_mut()
+        .unwrap()
+        .update_settings(packet.settings)
+        .await
+        .map_err(|()| "Failed to communicate with Player Controller".to_owned())?;
+      // Is this part of the login sequence?
       if (receiver.logging_in) {
         {
           {
             // TODO: Take value from player struct
             let held_item_packet = super::play::send::HeldItemChange { hotbar_slot: 4 };
-            send_packet!(held_item_packet => receiver.send_packet)?;
+            receiver.send_packet(held_item_packet).await?;
             receiver
               .player
-              .as_ref()
+              .as_mut()
               .unwrap()
-              .write()
+              .set_selected_hotbar_slot(4, false)
               .await
-              .set_selected_hotbar_slot_server_side(4);
+              .map_err(|()| "Failed to communicate with Player Controller".to_owned())?;
           }
 
           {
@@ -97,28 +102,22 @@ pub async fn handle(
             let recipes_packet = super::play::send::DeclareRecipes {
               ..Default::default()
             };
-            send_packet!(recipes_packet => receiver.send_packet)?;
+            receiver.send_packet(recipes_packet).await?;
           }
 
           {
             // TODO: Store tags on server
             let tags_packet = super::play::send::Tags::new();
-            send_packet!(tags_packet => receiver.send_packet)?;
+            receiver.send_packet(tags_packet).await?;
           }
 
           {
             // TODO: Get OP permission level from universe
             let status = super::play::send::EntityStatus {
-              entity: receiver
-                .player
-                .as_ref()
-                .unwrap()
-                .read()
-                .await
-                .get_entity_id(),
+              entity: receiver.player.as_ref().unwrap().get_id(),
               status: super::play::send::entity_status::status::SET_OP_PERMISSION_0,
             };
-            send_packet!(status => receiver.send_packet)?;
+            receiver.send_packet(status).await?;
           }
 
           {
@@ -134,7 +133,7 @@ pub async fn handle(
             let commands_packet = super::play::send::DeclareCommands {
               command_parsing_graph: &graph,
             };
-            send_packet!(commands_packet => receiver.send_packet)?;
+            receiver.send_packet(commands_packet).await?;
           }
 
           {
@@ -147,7 +146,7 @@ pub async fn handle(
               crafting_recipe_book: Default::default(),
               smelting_recipe_book: Default::default(),
             };
-            send_packet!(packet => receiver.send_packet)?;
+            receiver.send_packet(packet).await?;
           }
 
           // TODO: Temporary
@@ -157,13 +156,14 @@ pub async fn handle(
             let delay = delay_for(Duration::new(10 /*sec*/, 0 /*nanosec*/));
             delay.await;
             println!("[play/mod.rs] Kicking user");
-            use crate::helpers::chat_components::{ChatColor, ChatComponent, ChatComponentType};
-            send_packet!(crate::packet::play::send::Disconnect::from(
-                        ChatComponent::new(ChatComponentType::Text(
-                            "Server is not ready yet".to_string(),
-                        ))
-                        .set_color(ChatColor::DarkAqua)) => con_handle.send_packet)
-            .expect("[play/mod.rs] Error while sending kick packet");
+            use crate::helpers::chat_components::{ChatColor, ChatComponent};
+            con_handle
+              .send_packet(crate::packet::play::send::Disconnect::from(
+                &ChatComponent::text("Server is not ready yet".to_owned())
+                  .set_color(ChatColor::DarkAqua),
+              ))
+              .await
+              .expect("[play/mod.rs] Error while sending kick packet");
             con_handle
               .close_channel()
               .await
@@ -175,8 +175,8 @@ pub async fn handle(
     receive::HeldItemChange::ID => {
       use receive::HeldItemChange;
       let packet = HeldItemChange::read(&mut buffer)?;
-      let mut player = receiver.player.as_ref().unwrap().write().await;
-      player.set_selected_hotbar_slot_server_side(packet.hotbar_slot);
+      let player = receiver.player.as_mut().unwrap();
+      player.set_selected_hotbar_slot(packet.hotbar_slot, false);
       // TODO: DEBUG
       println!(
         "[play/mod.rs] Player {} selected hotbar slot {}",

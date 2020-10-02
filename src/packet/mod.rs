@@ -45,15 +45,6 @@ pub enum Packet {
     Handshake(crate::packet::handshake::receive::Handshake)
 }*/
 
-#[inline]
-pub fn get_packet_id_out<T: PacketSerialOut>(_: &T) -> u32 {
-    T::ID
-}
-#[inline]
-pub fn get_packet_id_in<T: PacketSerialIn>(_: &T) -> u32 {
-    T::ID
-}
-
 #[derive(Debug)]
 pub struct PlayerConnection {
     pub address: SocketAddr,
@@ -173,10 +164,15 @@ impl PlayerConnection {
 }
 
 impl PlayerConnectionPacketHandle {
-    pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
+    pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), String>
+    where
+        P: PacketSerialOut + Sized,
+    {
+        let mut buffer: Vec<u8> = Vec::new();
+        packet.consume_write(&mut buffer)?;
         if let Err(e) = self
             .sender_channel
-            .send(PacketSenderMessage::Packet(id, buffer))
+            .send(PacketSenderMessage::Packet(P::ID, buffer))
             .await
         {
             return Err(format!("{}", e));

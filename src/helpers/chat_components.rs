@@ -1,6 +1,10 @@
 //! See this [Minecraft Forum post](https://www.minecraftforum.net/forums/minecraft-java-edition/redstone-discussion-and/351959-1-12-json-text-component-for-tellraw-title-books)
-extern crate json;
-use json::JsonValue;
+
+use serde_json::Map;
+use serde_json::Value as JsonValue;
+use std::borrow::Cow;
+
+type CowStr = Cow<'static, str>;
 
 /// Represents a chat component object
 #[derive(Clone, Debug)]
@@ -12,7 +16,7 @@ pub struct ChatComponent {
     pub underlined: Option<bool>,
     pub strikethrough: Option<bool>,
     pub obfuscated: Option<bool>,
-    pub insertion: Option<String>,
+    pub insertion: Option<CowStr>,
     pub click_event: Option<ClickEvent>,
     pub hover_event: Option<HoverEvent>,
     pub extra: Vec<ChatComponent>,
@@ -21,34 +25,35 @@ pub struct ChatComponent {
 /// Represents the attributes of specific chat component types
 #[derive(Clone, Debug)]
 pub enum ChatComponentType {
-    Text(String),
+    Text(CowStr),
     Translate {
-        key: String,
+        key: CowStr,
         with: Vec<ChatComponent>,
     },
     Score {
-        name: String,
-        objective: String,
-        value: Option<String>,
+        name: CowStr,
+        objective: CowStr,
+        value: Option<CowStr>,
     },
-    Selector(String),
-    Keybind(String),
+    Selector(CowStr),
+    Keybind(CowStr),
 }
+
 impl ChatComponentType {
-    pub fn make_json(&self) -> JsonValue {
+    fn make_json(self) -> Map<String, JsonValue> {
         use ChatComponentType::*;
-        let mut obj = JsonValue::new_object();
+        let mut obj = Map::with_capacity(10);
         match self {
-            Text(text) => obj.insert("text", JsonValue::String(text.clone())).unwrap(),
+            Text(text) => {
+                obj.insert("text".to_owned(), JsonValue::String(text.into()));
+            }
             Translate { key, with } => {
-                obj.insert("translate", JsonValue::String(key.clone()))
-                    .unwrap();
+                obj.insert("translate".to_owned(), JsonValue::String(key.into()));
                 if with.len() > 0 {
                     obj.insert(
-                        "with",
-                        JsonValue::Array(with.iter().map(|cmp| cmp.make_json()).collect()),
-                    )
-                    .unwrap();
+                        "with".to_owned(),
+                        JsonValue::Array(with.into_iter().map(|cmp| cmp.make_json()).collect()),
+                    );
                 }
             }
             Score {
@@ -56,22 +61,97 @@ impl ChatComponentType {
                 objective,
                 value,
             } => {
-                let mut score = JsonValue::new_object();
-                score.insert("name", name.clone()).unwrap();
-                score.insert("objective", objective.clone()).unwrap();
+                let mut score = Map::with_capacity(2);
+                score.insert("name".to_owned(), JsonValue::String(name.into()));
+                score.insert("objective".to_owned(), JsonValue::String(objective.into()));
                 if let Some(value) = value {
-                    score.insert("value", value.clone()).unwrap();
+                    score.insert("value".to_owned(), JsonValue::String(value.into()));
                 }
-                obj.insert("score", score).unwrap();
+                obj.insert("score".to_owned(), JsonValue::Object(score));
             }
-            Selector(sel) => obj
-                .insert("selector", JsonValue::String(sel.clone()))
-                .unwrap(),
-            Keybind(action) => obj
-                .insert("keybind", JsonValue::String(action.clone()))
-                .unwrap(),
+            Selector(sel) => {
+                obj.insert("selector".to_owned(), JsonValue::String(sel.into()));
+            }
+            Keybind(action) => {
+                obj.insert("keybind".to_owned(), JsonValue::String(action.into()));
+            }
         }
         obj
+    }
+    #[inline]
+    fn serialize_json(&self, buffer: &mut Vec<u8>) {
+        use ChatComponentType::*;
+        match self {
+            Text(ref text) => {
+                buffer.extend_from_slice(br#"{"text":""#);
+                escape_write(text, buffer);
+                buffer.push(b'"');
+            }
+            Translate { ref key, ref with } => {
+                {
+                    let len = key.len();
+                    buffer.reserve(25 + len + (len >> 3));
+                }
+                buffer.extend_from_slice(br#"{"translate":""#);
+                escape_write(key, buffer);
+                buffer.extend_from_slice(br#"","with":["#);
+                {
+                    let mut iter = with.iter();
+                    if let Some(i) = iter.next() {
+                        i.serialize_json(buffer);
+                        for i in iter {
+                            buffer.push(b',');
+                            i.serialize_json(buffer);
+                        }
+                    }
+                }
+                buffer.push(b']');
+            }
+            Score {
+                ref name,
+                ref objective,
+                value: ref value_opt,
+            } => {
+                buffer.extend_from_slice(br#"{"score":{"name":""#);
+                escape_write(name, buffer);
+                buffer.extend_from_slice(br#"","objective":""#);
+                escape_write(objective, buffer);
+                if let Some(value) = value_opt {
+                    buffer.extend_from_slice(br#"","value":""#);
+                    buffer.extend(value.to_string().as_bytes());
+                }
+                buffer.extend_from_slice(br#""}"#);
+            }
+            Selector(sel) => {
+                buffer.extend_from_slice(br#"{"selector":""#);
+                escape_write(sel, buffer);
+                buffer.push(b'"');
+            }
+            Keybind(action) => {
+                buffer.extend_from_slice(br#"{"keybind":""#);
+                escape_write(action, buffer);
+                buffer.push(b'"');
+            }
+        }
+    }
+}
+
+#[inline]
+fn escape_write(text: &str, buffer: &mut Vec<u8>) {
+    let len = text.len();
+    buffer.reserve(len + (len >> 3));
+    for c in text.chars() {
+        match c {
+            '\\' => buffer.extend_from_slice(b"\\\\"),
+            '"' => buffer.extend_from_slice(b"\\\""),
+            '\n' => buffer.extend_from_slice(b"\\n"),
+            '\r' => buffer.extend_from_slice(b"\\r"),
+            c => {
+                let mut buf = [0u8; 4];
+                let s = c.encode_utf8(&mut buf);
+                buffer.extend_from_slice(s.as_bytes());
+            }
+        }
     }
 }
 
@@ -159,7 +239,7 @@ impl From<ChatColor> for String {
             White => "white",
             Custom(color) => return color.to_hex_code(),
         }
-        .to_string()
+        .to_owned()
     }
 }
 
@@ -170,59 +250,125 @@ impl ChatComponent {
             ..Default::default()
         }
     }
-    pub fn make_json(&self) -> JsonValue {
+    pub fn text(text: impl Into<CowStr>) -> Self {
+        ChatComponent::new(ChatComponentType::Text(text.into()))
+    }
+    pub fn make_json(self) -> JsonValue {
+        if self.color.is_none()
+            && self.bold.is_none()
+            && self.italic.is_none()
+            && self.underlined.is_none()
+            && self.underlined.is_none()
+            && self.strikethrough.is_none()
+            && self.obfuscated.is_none()
+            && self.insertion.is_none()
+            && self.hover_event.is_none()
+            && self.click_event.is_none()
+        {
+            if let ChatComponentType::Text(txt) = &self.component_type {
+                return JsonValue::String(txt.clone().into());
+            }
+        }
         let mut obj = self.component_type.make_json();
-        let mut is_blank = if let ChatComponentType::Text(txt) = &self.component_type {
-            Some(txt)
-        } else {
-            None
-        };
         if let Some(color) = self.color {
-            obj.insert("color", JsonValue::String(color.into()))
-                .unwrap();
-            is_blank = None;
+            obj.insert("color".to_owned(), JsonValue::String(color.into()));
         }
         if let Some(bold) = self.bold {
-            obj.insert("bold", JsonValue::Boolean(bold)).unwrap();
-            is_blank = None;
+            obj.insert("bold".to_owned(), JsonValue::Bool(bold));
         }
         if let Some(italic) = self.italic {
-            obj.insert("italic", JsonValue::Boolean(italic)).unwrap();
-            is_blank = None;
+            obj.insert("italic".to_owned(), JsonValue::Bool(italic));
         }
         if let Some(underlined) = self.underlined {
-            obj.insert("underlined", JsonValue::Boolean(underlined))
-                .unwrap();
-            is_blank = None;
+            obj.insert("underlined".to_owned(), JsonValue::Bool(underlined));
         }
         if let Some(strikethrough) = self.strikethrough {
-            obj.insert("strikethrough", JsonValue::Boolean(strikethrough))
-                .unwrap();
-            is_blank = None;
+            obj.insert("strikethrough".to_owned(), JsonValue::Bool(strikethrough));
         }
         if let Some(obfuscated) = self.obfuscated {
-            obj.insert("obfuscated", JsonValue::Boolean(obfuscated))
-                .unwrap();
-            is_blank = None;
+            obj.insert("obfuscated".to_owned(), JsonValue::Bool(obfuscated));
         }
-        if let Some(insertion) = &self.insertion {
-            obj.insert("insertion", JsonValue::String(insertion.clone()))
-                .unwrap();
-            is_blank = None;
+        if let Some(insertion) = self.insertion {
+            obj.insert("insertion".to_owned(), JsonValue::String(insertion.into()));
         }
-        if let Some(hover) = &self.hover_event {
-            obj.insert("hover_event", hover.make_json()).unwrap();
-            is_blank = None;
+        if let Some(hover) = self.hover_event {
+            obj.insert(
+                "hover_event".to_owned(),
+                JsonValue::Object(hover.make_json()),
+            );
         }
-        if let Some(click) = &self.click_event {
-            obj.insert("click_event", click.make_json()).unwrap();
-            is_blank = None;
+        if let Some(click) = self.click_event {
+            obj.insert(
+                "click_event".to_owned(),
+                JsonValue::Object(click.make_json()),
+            );
         }
-        if let Some(txt) = is_blank {
-            JsonValue::String(txt.clone())
-        } else {
-            obj
+        JsonValue::Object(obj)
+    }
+    /// Function optimized for serialiting a chat component to
+    /// a buffer by minimizing memory allocation.
+    pub fn serialize_json(&self, buffer: &mut Vec<u8>) {
+        if self.color.is_none()
+            && self.bold.is_none()
+            && self.italic.is_none()
+            && self.underlined.is_none()
+            && self.underlined.is_none()
+            && self.strikethrough.is_none()
+            && self.obfuscated.is_none()
+            && self.insertion.is_none()
+            && self.hover_event.is_none()
+            && self.click_event.is_none()
+        {
+            if let ChatComponentType::Text(txt) = &self.component_type {
+                buffer.push(b'"');
+                escape_write(txt, buffer);
+                buffer.push(b'"');
+                return;
+            }
         }
+        self.component_type.serialize_json(buffer);
+        let bools = [&b"false"[..], &b"true"[..]];
+        if let Some(color) = self.color {
+            buffer.extend_from_slice(br#","color":""#);
+            buffer.extend_from_slice(String::from(color).as_bytes());
+            buffer.push(b'"');
+        }
+        if let Some(bold) = self.bold {
+            buffer.extend_from_slice(br#","bold":"#);
+            buffer.extend_from_slice(bools[bold as usize]);
+        }
+        if let Some(italic) = self.italic {
+            buffer.extend_from_slice(br#","italic":"#);
+            buffer.extend_from_slice(bools[italic as usize]);
+        }
+        if let Some(underlined) = self.underlined {
+            buffer.extend_from_slice(br#","underlined":"#);
+            buffer.extend_from_slice(bools[underlined as usize]);
+        }
+        if let Some(strikethrough) = self.strikethrough {
+            buffer.extend_from_slice(br#","strikethrough":"#);
+            buffer.extend_from_slice(bools[strikethrough as usize]);
+        }
+        if let Some(obfuscated) = self.obfuscated {
+            buffer.extend_from_slice(br#","obfuscated":"#);
+            buffer.extend_from_slice(bools[obfuscated as usize]);
+        }
+        if let Some(ref insertion) = self.insertion {
+            buffer.extend_from_slice(br#","insertion":""#);
+            escape_write(insertion, buffer);
+            buffer.push(b'"');
+        }
+        if let Some(ref hover) = self.hover_event {
+            buffer.extend_from_slice(br#","hover_event":{"#);
+            hover.serialize_json(buffer);
+            buffer.push(b'}');
+        }
+        if let Some(ref click) = self.click_event {
+            buffer.extend_from_slice(br#","click_event":{"#);
+            click.serialize_json(buffer);
+            buffer.push(b'}');
+        }
+        buffer.push(b'}');
     }
     pub fn set_color(mut self, color: ChatColor) -> Self {
         self.color = Some(color);
@@ -249,7 +395,7 @@ impl ChatComponent {
         self
     }
     pub fn set_insertion(mut self, insertion: String) -> Self {
-        self.insertion = Some(insertion);
+        self.insertion = Some(insertion.into());
         self
     }
     pub fn set_hover_event(mut self, hover_event: HoverEvent) -> Self {
@@ -268,7 +414,7 @@ impl ChatComponent {
 impl Default for ChatComponent {
     fn default() -> Self {
         ChatComponent {
-            component_type: ChatComponentType::Text(String::from("")),
+            component_type: ChatComponentType::Text("".into()),
             color: None,
             bold: None,
             italic: None,
@@ -292,19 +438,41 @@ pub enum ClickEvent {
 }
 
 impl ClickEvent {
-    pub fn make_json(&self) -> JsonValue {
+    pub fn make_json(self) -> Map<String, JsonValue> {
         use ClickEvent::*;
-        let mut obj = JsonValue::new_object();
+        let mut obj = Map::with_capacity(2);
         let res: (&str, JsonValue) = match self {
-            OpenUrl(url) => ("open_url", JsonValue::String(url.clone())),
-            RunCommand(cmd) => ("run_command", JsonValue::String(cmd.clone())),
-            SuggestCommand(cmd) => ("suggest_command", JsonValue::String(cmd.clone())),
+            OpenUrl(url) => ("open_url", JsonValue::String(url)),
+            RunCommand(cmd) => ("run_command", JsonValue::String(cmd)),
+            SuggestCommand(cmd) => ("suggest_command", JsonValue::String(cmd)),
             ChangePage(page) => ("change_page", JsonValue::String(page.to_string())),
         };
-        obj.insert("action", JsonValue::String(res.0.to_string()))
-            .unwrap();
-        obj.insert("value", res.1).unwrap();
+        obj.insert("action".to_owned(), JsonValue::String(res.0.to_owned()));
+        obj.insert("value".to_owned(), res.1);
         obj
+    }
+    #[inline]
+    fn serialize_json(&self, buffer: &mut Vec<u8>) {
+        use ClickEvent::*;
+        match self {
+            OpenUrl(ref url) => {
+                buffer.extend_from_slice(br#""action":"open_url","value":""#);
+                escape_write(url, buffer);
+            }
+            RunCommand(ref cmd) => {
+                buffer.extend_from_slice(br#""action":"run_command","value":""#);
+                escape_write(cmd, buffer);
+            }
+            SuggestCommand(ref cmd) => {
+                buffer.extend_from_slice(br#""action":"suggest_command","value":""#);
+                escape_write(cmd, buffer);
+            }
+            ChangePage(ref page) => {
+                buffer.extend_from_slice(br#""action":"change_page","value":""#);
+                buffer.extend_from_slice(page.to_string().as_bytes());
+            }
+        }
+        buffer.push(b'"');
     }
 }
 
@@ -315,19 +483,41 @@ pub enum HoverEvent {
 }
 
 impl HoverEvent {
-    pub fn make_json(&self) -> JsonValue {
+    pub fn make_json(self) -> Map<String, JsonValue> {
         use HoverEvent::*;
-        let mut obj = JsonValue::new_object();
+        let mut obj = Map::with_capacity(2);
         let res: (&str, JsonValue) = match self {
             ShowText(text) => ("show_text", JsonValue::String(text.clone())),
             ShowComponentText(cmps) => (
                 "show_text",
-                JsonValue::Array(cmps.iter().map(|cmp| cmp.make_json()).collect()),
+                JsonValue::Array(cmps.into_iter().map(|cmp| cmp.make_json()).collect()),
             ),
         };
-        obj.insert("action", JsonValue::String(res.0.to_string()))
-            .unwrap();
-        obj.insert("value", res.1).unwrap();
+        obj.insert("action".to_owned(), JsonValue::String(res.0.to_owned()));
+        obj.insert("value".to_owned(), res.1);
         obj
+    }
+    #[inline]
+    fn serialize_json(&self, buffer: &mut Vec<u8>) {
+        use HoverEvent::*;
+        match self {
+            ShowText(ref text) => {
+                buffer.extend_from_slice(br#""action":"show_text","value":""#);
+                escape_write(text, buffer);
+                buffer.push(b'"');
+            }
+            ShowComponentText(ref cmps) => {
+                buffer.extend_from_slice(br#""action":"show_text","value":["#);
+                let mut iter = cmps.iter();
+                if let Some(cmp) = iter.next() {
+                    cmp.serialize_json(buffer);
+                    for cmp in iter {
+                        buffer.push(b',');
+                        cmp.serialize_json(buffer);
+                    }
+                }
+                buffer.push(b']');
+            }
+        }
     }
 }

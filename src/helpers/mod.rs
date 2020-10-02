@@ -1,13 +1,29 @@
 mod bit_array;
 pub mod chat_components;
+mod chunk_send_order;
 mod color;
 mod namespaced_key;
 mod nibble_array;
 mod registry;
 mod vector;
 pub use bit_array::*;
+pub use chunk_send_order::*;
 pub use color::*;
 pub use namespaced_key::*;
 pub use nibble_array::*;
 pub use registry::*;
 pub use vector::*;
+pub mod fast;
+pub mod mojang_api;
+
+#[test]
+fn test_chunk_send_order() {
+  use crate::server::universe::world::chunk::ChunkPosition;
+  let center = ChunkPosition::new(2, 1);
+  let loaded = [ChunkPosition::new(2, 2)].iter().cloned().collect();
+  let result = get_chunks_to_load(3, center, &loaded);
+  for pos in &result {
+    println!("Pos: {:?}", pos);
+  }
+  println!("Length: {}", result.len());
+}

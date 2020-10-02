@@ -1,36 +1,54 @@
 use super::*;
-use crate::helpers::Vec3d;
+use crate::helpers::{chat_components, Vec3d};
 use crate::server::registries::EntityType;
-use async_trait::async_trait;
+
+pub mod game_profile;
+mod settings;
+pub use settings::*;
 
 /// Represents the player entity
 pub struct EntityPlayer {
-  id: u32,
-  name: String,
-  position: Vec3d<f64>,
-  yaw: f32,
-  pitch: f32,
-  health: f32,
-  food: f32,
-  saturation: f32,
+  pub id: u32,
+  pub custom_name: Option<Vec<chat_components::ChatComponent>>,
+  pub position: Vec3d<f64>,
+  pub yaw: f32,
+  pub pitch: f32,
+  pub health: f32,
+  pub food: f32,
+  pub saturation: f32,
+  pub selected_hotbar_slot: u8,
+  pub settings: PlayerSettings,
+  pub profile: game_profile::GameProfile,
 }
 
 impl EntityPlayer {
-  pub fn new(id: u32, name: String) -> Self {
+  pub fn new(id: u32, profile: game_profile::GameProfile) -> Self {
     Self {
       id,
-      name,
+      profile,
+      ..Default::default()
+    }
+  }
+}
+
+impl Default for EntityPlayer {
+  fn default() -> Self {
+    Self {
+      id: 0,
+      custom_name: None,
       position: Vec3d::new(0.0, 0.0, 0.0),
       yaw: 0.0,
       pitch: 0.0,
       health: 20.0,
       food: 20.0,
       saturation: 20.0,
+      selected_hotbar_slot: 0,
+      settings: Default::default(),
+      profile: game_profile::GameProfile::new_offline("Steve"),
     }
   }
 }
 
-#[async_trait]
 impl Entity for EntityPlayer {
   const ENTITY_TYPE: EntityType = EntityType::Player;
   fn get_id(&self) -> u32 {
@@ -38,7 +56,6 @@ impl Entity for EntityPlayer {
   }
 }
 
-#[async_trait]
 impl EntityLiving for EntityPlayer {
   fn get_health(&self) -> f32 {
     self.health
@@ -58,35 +75,138 @@ pub mod online_controller {
   pub struct Controller {
     pub connection: PlayerConnectionPacketHandle,
     pub player: EntityPlayer,
+    handle: Option<<Controller as Actor>::Handle>,
   }
 
   /// Other messages this Actor can receive
   pub enum ControllerMessage {
-    // TODO
+    UpdateSettings(PlayerSettings),
+    SetSelectedHotbarSlot { slot: u8, update_client: bool },
+  }
+
+  impl ControllerHandle {
+    pub fn get_name(&self) -> String {
+      self.final_properties.name.clone()
+    }
+    pub fn get_uuid(&self) -> uuid::Uuid {
+      self.final_properties.uuid.clone()
+    }
+    pub async fn update_settings(&mut self, settings: PlayerSettings) -> Result<(), ()> {
+      self
+        .send_raw_message(ActorMessage::Other(ControllerMessage::UpdateSettings(
+          settings,
+        )))
+        .await
+        .map_err(|_| ())?;
+      Ok(())
+    }
+    pub async fn set_selected_hotbar_slot(
+      &mut self,
+      slot: u8,
+      update_client: bool,
+    ) -> Result<(), ()> {
+      assert!(slot <= 9, "Invalid slot id: {}", slot);
+      self
+        .send_raw_message(ActorMessage::Other(
+          ControllerMessage::SetSelectedHotbarSlot {
+            slot,
+            update_client,
+          },
+        ))
+        .await
+        .map_err(|_| ())?;
+      Ok(())
+    }
   }
 
   /// Handle for communicating with this actor
-  pub type ControllerHandle = super::EntityActorHandleStruct<ControllerMessage>;
+  pub type ControllerHandle =
+    super::EntityActorHandleStruct<ControllerMessage, SharedControllerProperties>;
+
+  impl Controller {
+    pub fn new(con: PlayerConnectionPacketHandle, player: EntityPlayer) -> Self {
+      Self {
+        connection: con,
+        player,
+        handle: None,
+      }
+    }
+
+    pub async fn set_selected_hotbar_slot(&mut self, slot: u8) -> Result<(), String> {
+      let packet = crate::packet::play::send::HeldItemChange { hotbar_slot: slot };
+      let con = &mut self.connection;
+      con.send_packet(packet).await?;
+      self.player.selected_hotbar_slot = slot;
+      Ok(())
+    }
+  }
+
+  pub struct SharedControllerProperties {
+    name: String,
+    uuid: uuid::Uuid,
+  }
 
   #[async_trait]
   impl Actor for Controller {
     type Handle = ControllerHandle;
 
-    async fn handle_message(&mut self, _message: <Self::Handle as ActorHandle>::Message) -> bool {
-      true
+    async fn handle_message(&mut self, message: <Self::Handle as ActorHandle>::Message) -> bool {
+      match message {
+        ControllerMessage::UpdateSettings(settings_new) => {
+          self.player.settings = settings_new;
+          // TODO: Send chunks etc
+          true
+        }
+        ControllerMessage::SetSelectedHotbarSlot {
+          update_client: false,
+          slot,
+        } => {
+          self.player.selected_hotbar_slot = slot;
+          true
+        }
+        ControllerMessage::SetSelectedHotbarSlot {
+          update_client: true,
+          slot,
+        } => match self.set_selected_hotbar_slot(slot).await {
+          Ok(()) => true,
+          Err(e) => {
+            eprintln!("Communication with Sender Actor failed: {}", e);
+            false
+          }
+        },
+      }
     }
 
     fn create_handle(
       &self,
       sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
     ) -> Self::Handle {
-      ControllerHandle::new(self.player.id, sender)
+      ControllerHandle::new(
+        self.player.id,
+        sender,
+        SharedControllerProperties {
+          name: self.player.profile.name.clone(),
+          uuid: self.player.profile.uuid.clone(),
+        },
+      )
+    }
+
+    fn set_handle(&mut self, handle: Self::Handle) {
+      self.handle = Some(handle);
+    }
+
+    fn clone_handle(&self) -> Self::Handle {
+      self.handle.as_ref().unwrap().clone()
     }
   }
 
   impl fmt::Display for Controller {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      write!(f, "Player Controller ({})", self.player.name)
+      write!(
+        f,
+        "Online Player Controller ({} / {})",
+        self.player.profile.name, self.player.profile.uuid
+      )
     }
   }
 }

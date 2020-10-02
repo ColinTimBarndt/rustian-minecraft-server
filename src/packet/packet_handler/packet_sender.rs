@@ -225,7 +225,16 @@ impl PacketSenderHandle {
         Self { channel }
     }
 
-    pub async fn send_packet(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
+    pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), String>
+    where
+        P: crate::packet::PacketSerialOut + Sized,
+    {
+        let mut buffer: Vec<u8> = Vec::new();
+        packet.consume_write(&mut buffer)?;
+        self.send_packet_raw(P::ID, buffer).await
+    }
+
+    async fn send_packet_raw(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
         if let Err(e) = self
             .channel
             .send(PacketSenderMessage::Packet(id, buffer))

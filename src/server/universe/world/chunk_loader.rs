@@ -7,19 +7,27 @@ pub trait ChunkLoader: Send + 'static {
     fn load_chunk(&mut self, pos: ChunkPosition) -> Option<Chunk>;
 }
 
-/// Generates all chunks by copying the template
-pub struct TemplateChunkLoader {
-    template: Chunk,
-}
-
-impl TemplateChunkLoader {
-    pub fn new(template: Chunk) -> Self {
-        Self { template }
+impl<T> From<Box<T>> for Box<dyn ChunkLoader>
+where
+    T: ChunkLoader,
+{
+    fn from(from: Box<T>) -> Box<dyn ChunkLoader> {
+        from as Box<dyn ChunkLoader>
     }
 }
-impl ChunkLoader for TemplateChunkLoader {
-    fn load_chunk(&mut self, pos: ChunkPosition) -> Option<Chunk> {
-        Some(self.template.copy(pos))
+
+/// Can't load any chunks, but forces them to be generated
+/// every time.
+pub struct VoidChunkLoader {}
+
+impl VoidChunkLoader {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+impl ChunkLoader for VoidChunkLoader {
+    fn load_chunk(&mut self, _pos: ChunkPosition) -> Option<Chunk> {
+        None
     }
 }
 

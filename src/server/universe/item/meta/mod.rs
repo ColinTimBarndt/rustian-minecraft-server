@@ -29,10 +29,10 @@ impl ItemMeta for BasicItemMeta {
       let mut map = HashMap::new();
       if let Some(name) = &display.name {
         exists = true;
-        // No error can be thrown here according to the doc
-        map
-          .insert("Name".into(), nbt::Value::String(name.make_json().dump()))
-          .unwrap();
+        map.insert(
+          "Name".into(),
+          nbt::Value::String(serde_json::ser::to_string(&name.clone().make_json()).unwrap()),
+        );
       }
       if exists {
         // No error can be thrown here according to the doc

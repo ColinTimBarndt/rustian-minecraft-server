@@ -18,6 +18,7 @@ pub enum PacketHandlerMessage {
   StopListening,
   SetPing(time::Duration),
   GetPing(oneshot::Sender<time::Duration>),
+  GetServer(oneshot::Sender<MinecraftServerHandle>),
 }
 
 pub struct PacketHandler {
@@ -26,20 +27,6 @@ pub struct PacketHandler {
   outgoing_channel: Sender<PacketSenderMessage>,
   receiver_shutdown_channel: Sender<()>,
   pub ping: time::Duration,
-}
-
-#[macro_export]
-macro_rules! send_packet {
-  ($packet:expr => $var:ident $(. $sender:ident)*) => {{
-    use crate::packet::PacketSerialOut;
-    let packet = $packet;
-    let id = crate::packet::get_packet_id_out(&packet);
-    let mut buffer = Vec::new();
-    match packet.consume_write(&mut buffer) {
-      Ok(()) => $var $(. $sender(id, buffer))* .await,
-      Err(e) => Err(format!("{}", e)),
-    }
-  }};
 }
 
 impl PacketHandler {
@@ -78,8 +65,13 @@ impl PacketHandler {
         }*/
         let packet_sender = PacketSender::new(writer, receiver);
         let writer_handle = spawn(async { packet_sender.listen().await });
-        let packet_receiver =
-          PacketReceiver::new(reader, sender_clone, handler_sender_clone, encryption);
+        let packet_receiver = PacketReceiver::new(
+          reader,
+          sender_clone,
+          handler_sender_clone,
+          encryption,
+          me.address.clone(),
+        );
         let reader_handle = spawn(async move { packet_receiver.listen(shutdown_receiver).await });
         'HandlerChannelLoop: loop {
           let msg = handler_receiver.recv().await;
@@ -101,7 +93,10 @@ impl PacketHandler {
               }
               GetPing(sender) => {
                 // Ignore the result
-                drop(sender.send(me.ping));
+                let _ = sender.send(me.ping);
+              }
+              GetServer(sender) => {
+                let _ = sender.send(me.server.clone());
               }
             },
             None => {

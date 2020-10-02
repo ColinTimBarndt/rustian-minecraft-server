@@ -1,5 +1,4 @@
 use crate::packet::{data::write, PacketSerialOut};
-use json::{object, JsonValue};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -17,7 +16,7 @@ impl Response {
 
 #[derive(Debug)]
 pub struct ServerStatus {
-    pub version_name: String,
+    pub version_name: &'static str,
     pub protocol_version: u32,
     pub max_players: u32,
     pub online_players: u32,
@@ -29,7 +28,7 @@ pub struct ServerStatus {
 impl ServerStatus {
     pub fn new() -> Self {
         Self {
-            version_name: "1.15.2".to_owned(),
+            version_name: "1.15.2",
             protocol_version: 578,
             max_players: 20,
             online_players: 0,
@@ -42,39 +41,73 @@ impl ServerStatus {
         }
     }
 
-    pub fn to_json(&self) -> JsonValue {
-        let mut sample = JsonValue::new_array();
-        for (name, uuid) in self.sample.iter() {
-            match sample.push(object! {
-                "name" => name.to_string(),
-                "id" => uuid.to_hyphenated().to_string()
-            }) {
-                Ok(()) => (),
-                Err(e) => panic!("Will never happen: {}", e),
-            };
+    /// Creates a json string with the given information
+    pub fn to_json(&self) -> String {
+        use serde_json::{Map, Value};
+        let mut obj = json::ServerStatusRoot {
+            version: json::ServerStatusVersion {
+                name: self.version_name,
+                protocol: self.protocol_version,
+            },
+            players: json::ServerStatusPlayers {
+                max: self.max_players,
+                online: self.online_players,
+                sample: self
+                    .sample
+                    .iter()
+                    .map(|(name, uuid)| json::ServerStatusPlayersSample {
+                        name: name.clone(),
+                        id: uuid.to_hyphenated().to_string(),
+                    })
+                    .collect(),
+            },
+            description: json::ServerStatusDescription {
+                text: self.description.clone(),
+            },
+            other: Map::with_capacity(1),
+        };
+        if let Some(favicon) = &self.favicon {
+            obj.other
+                .insert("favicon".to_owned(), Value::String(favicon.clone()));
         }
-        let mut obj = object! {
-            "version" => object!{
-                "name" => self.version_name.to_string(),
-                "protocol" => self.protocol_version
-            },
-            "players" => object!{
-                "max" => self.max_players,
-                "online" => self.online_players,
-                "sample" => sample
-            },
-            "description" => object!{
-                "text" => self.description.to_string()
-            }
-        };
-        match &self.favicon {
-            Some(icon) => match obj.insert("favicon", icon.to_string()) {
-                Ok(()) => (),
-                Err(e) => panic!("Will never happen: {}", e),
-            },
-            None => (),
-        };
-        return obj;
+        return serde_json::ser::to_string(&obj).unwrap();
+    }
+}
+
+mod json {
+    use serde::Serialize;
+    use serde_json::{Map, Value};
+    #[derive(Serialize)]
+    pub struct ServerStatusRoot {
+        pub version: ServerStatusVersion,
+        pub players: ServerStatusPlayers,
+        pub description: ServerStatusDescription,
+        #[serde(flatten)]
+        pub other: Map<String, Value>,
+    }
+
+    #[derive(Serialize)]
+    pub struct ServerStatusVersion {
+        pub name: &'static str,
+        pub protocol: u32,
+    }
+
+    #[derive(Serialize)]
+    pub struct ServerStatusPlayers {
+        pub max: u32,
+        pub online: u32,
+        pub sample: Vec<ServerStatusPlayersSample>,
+    }
+
+    #[derive(Serialize)]
+    pub struct ServerStatusPlayersSample {
+        pub name: String,
+        pub id: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct ServerStatusDescription {
+        pub text: String,
     }
 }
 
@@ -92,9 +125,9 @@ impl Pong {
 impl PacketSerialOut for Response {
     const ID: u32 = 0x00;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
-        let json = self.status.to_json();
-        write::string(buffer, json.dump());
-        //println!("{}", json.pretty(2));
+        let json_string = self.status.to_json();
+        write::string(buffer, &json_string);
+        println!("Status JSON: {:#?}", json_string);
         Ok(())
     }
 }

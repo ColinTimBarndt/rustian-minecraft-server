@@ -8,7 +8,7 @@
 | ✅  | C→S: Handshake State=2                                                                                                          |
 | ✅  | C→S: Login Start                                                                                                                |
 | ✅  | S→C: Encryption Request                                                                                                         |
-| ❌  | Client auth                                                                                                                     |
+| ✅  | Client auth                                                                                                                     |
 | ✅  | C→S: Encryption Response                                                                                                        |
 | ✅  | Server auth, both enable encryption                                                                                             |
 | ✅  | S→C: Set Compression (Optional, enables compression)                                                                            |

@@ -1,6 +1,6 @@
 use crate::helpers::NamespacedKey;
 
-pub const MINECRAFT_NAMESPACE: &'static str = &"minecraft";
+pub const MINECRAFT_NAMESPACE: &'static str = "minecraft";
 
 pub trait Registry: Sized + Copy + Eq + std::hash::Hash {
   fn get_registry_key(&self) -> NamespacedKey;

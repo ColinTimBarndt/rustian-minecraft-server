@@ -10,10 +10,12 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 pub mod registries;
 pub mod universe;
+use universe::{Universe, UniverseHandle};
 
 pub struct MinecraftServer {
     pub address: SocketAddr,
@@ -35,8 +37,7 @@ impl MinecraftServer {
         }
         println!("\n=== END PUBLIC KEY ===");
 
-        let universe = universe::Universe::new();
-        let (_, u_handle) = universe.spawn_actor();
+        let (_, u_handle) = create_universe().await;
 
         let server = MinecraftServer {
             address: addr,
@@ -189,10 +190,42 @@ impl MinecraftServerHandle {
             .await?;
         Ok(())
     }
+    pub async fn get_universe(&mut self, player: Uuid) -> Result<UniverseHandle, String> {
+        let (send, recv) = oneshot::channel();
+        self.server_channel
+            .send(MinecraftServerHandleMessage::GetUniverse(player, send))
+            .await
+            .map_err(|e| format!("{}", e))?;
+        Ok(recv.await.map_err(|e| format!("{}", e))?)
+    }
 }
 
 pub enum MinecraftServerHandleMessage {
     Shutdown,
     PlayerDisconnect(SocketAddr),
-    GetUniverse(Uuid, oneshot::Sender<universe::UniverseHandle>),
+    GetUniverse(Uuid, oneshot::Sender<UniverseHandle>),
+}
+
+async fn create_universe() -> (JoinHandle<Universe>, UniverseHandle) {
+    use crate::helpers::NamespacedKey;
+    use crate::server::universe::world::{blocks, Block};
+    use crate::server::universe::world::{chunk_generator, chunk_loader};
+    let overworld_key =
+        NamespacedKey::new(crate::helpers::MINECRAFT_NAMESPACE, universe::OVERWORLD_KEY);
+    let universe = Universe::new(overworld_key.clone());
+    let (jh, mut handle) = universe.spawn_actor();
+    let generator = chunk_generator::FlatWorldGenerator::new(vec![
+        (Block::Bedrock, 1),
+        (Block::Dirt, 3),
+        (Block::GrassBlock(blocks::GrassBlockData::default()), 1),
+    ]);
+    handle
+        .create_world(
+            overworld_key,
+            Box::new(generator),
+            Box::new(chunk_loader::VoidChunkLoader::new()),
+        )
+        .await
+        .expect("Failed to communicate with World Actor");
+    (jh, handle)
 }

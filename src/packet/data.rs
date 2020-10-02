@@ -5,7 +5,7 @@ pub mod read {
     use crate::helpers::Vec3d;
     use crate::packet::*;
     use byteorder::{BigEndian, ReadBytesExt};
-    use json::JsonValue;
+    use serde_json::Value as JsonValue;
     use std::error::Error;
 
     // TODO: Use the vec in reverse order and pop()
@@ -174,7 +174,7 @@ pub mod read {
 
     pub fn json(buffer: &mut &[u8]) -> Result<JsonValue, PacketParsingError> {
         let s: String = string(buffer)?;
-        match json::parse(s.as_str()) {
+        match serde_json::from_str(&s) {
             Ok(json) => Ok(json),
             Err(_) => Err(PacketParsingError::InvalidJson),
         }
@@ -204,9 +204,10 @@ pub mod read {
     }
 }
 pub mod write {
-    use crate::helpers::Vec3d;
+    use crate::helpers::{chat_components::ChatComponent, Vec3d};
     use byteorder::{BigEndian, WriteBytesExt};
-    use json::JsonValue;
+    use serde_json::Value as JsonValue;
+    use uuid::Uuid;
 
     pub fn bool(buffer: &mut Vec<u8>, b: bool) {
         buffer.write_u8(b as u8).unwrap();
@@ -249,7 +250,7 @@ pub mod write {
 
     pub fn string(buffer: &mut Vec<u8>, s: impl AsRef<str>) {
         let bytes = s.as_ref().as_bytes();
-        var_u32(buffer, bytes.len() as u32);
+        var_usize(buffer, bytes.len());
         buffer.extend(bytes);
     }
 
@@ -314,7 +315,46 @@ pub mod write {
     }
 
     pub fn json(buffer: &mut Vec<u8>, json: &JsonValue) {
-        string(buffer, json.dump());
+        let jsb = serde_json::ser::to_vec(json).unwrap();
+        var_usize(buffer, jsb.len());
+        // No error can occur here because the writer is a byte vec
+        buffer.extend(jsb);
+    }
+
+    pub fn chat_component(buffer: &mut Vec<u8>, comp: &ChatComponent) {
+        let mut json = Vec::new();
+        comp.serialize_json(&mut json);
+        var_usize(buffer, json.len());
+        println!("JSON: {:#?}", json);
+        buffer.append(&mut json);
+    }
+
+    pub fn chat_components(buffer: &mut Vec<u8>, comps: &[ChatComponent]) {
+        if comps.len() == 1 {
+            chat_component(buffer, &comps[0]);
+            return;
+        }
+        let mut json = Vec::new();
+        json.push(b'[');
+        {
+            let mut iter = comps.iter();
+            if let Some(comp) = iter.next() {
+                comp.serialize_json(&mut json);
+                for comp in iter {
+                    json.push(b',');
+                    comp.serialize_json(&mut json);
+                }
+            }
+        }
+        json.push(b']');
+        var_usize(buffer, json.len());
+        println!("JSON: {:#?}", json);
+        buffer.append(&mut json);
+    }
+
+    pub fn uuid(buffer: &mut Vec<u8>, uuid: Uuid) {
+        // TODO: Test endianness
+        buffer.extend_from_slice(uuid.as_bytes());
     }
 
     /// Converts a block position into a 64-bit unsigned composite number
@@ -388,18 +428,14 @@ mod tests {
 
     #[test]
     fn test_floats() {
+        // Property based testing
         for _ in 0..100 {
             let float: f32 = rand::random();
             let mut buf = Vec::with_capacity(4);
             write::f32(&mut buf, float);
-            println!(
-                "{:02X} {:02X} {:02X} {:02X}",
-                buf[0], buf[1], buf[2], buf[3]
-            );
             let mut buf_slice = &buf[..];
             let result: f32 = read::f32(&mut buf_slice).unwrap();
             assert_eq!(buf_slice.len(), 0);
-            println!("{} == {}", result, float);
             assert!(result == float);
         }
     }

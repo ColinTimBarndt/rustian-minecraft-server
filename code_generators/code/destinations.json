@@ -1,4 +1,5 @@
 {
   "blocks.rs": "server/universe/world/blocks.rs",
-  "registries.rs": "server/registries.rs"
+  "registries.rs": "server/registries.rs",
+  "chunk_send_order.rs": "helpers/chunk_send_order.rs"
 }

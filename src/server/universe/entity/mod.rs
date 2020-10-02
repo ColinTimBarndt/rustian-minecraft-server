@@ -30,22 +30,33 @@ pub trait EntityActorHandle: ActorHandle {
 }
 
 #[derive(Debug)]
-pub struct EntityActorHandleStruct<M: Sized + Send + 'static> {
+pub struct EntityActorHandleStruct<M: Sized + Send + 'static, F: Sized + Send + Sync + 'static = ()>
+{
   pub(super) sender: Sender<ActorMessage<M>>,
   pub(super) id: u32,
+  pub(super) final_properties: std::sync::Arc<F>,
 }
 
-impl<M: Sized + Send + 'static> Clone for EntityActorHandleStruct<M> {
+impl<M, F> Clone for EntityActorHandleStruct<M, F>
+where
+  M: Sized + Send + 'static,
+  F: Sized + Send + Sync + 'static,
+{
   fn clone(&self) -> Self {
     Self {
       sender: self.sender.clone(),
       id: self.id,
+      final_properties: self.final_properties.clone(),
     }
   }
 }
 
 #[async_trait]
-impl<M: Sized + Send + 'static> ActorHandle for EntityActorHandleStruct<M> {
+impl<M, F> ActorHandle for EntityActorHandleStruct<M, F>
+where
+  M: Sized + Send + 'static,
+  F: Sized + Send + Sync + 'static,
+{
   type Message = M;
   async fn send_raw_message(
     &mut self,
@@ -55,15 +66,26 @@ impl<M: Sized + Send + 'static> ActorHandle for EntityActorHandleStruct<M> {
   }
 }
 
-#[async_trait]
-impl<M: Sized + Send + 'static> EntityActorHandle for EntityActorHandleStruct<M> {
+impl<M, F> EntityActorHandle for EntityActorHandleStruct<M, F>
+where
+  M: Sized + Send + 'static,
+  F: Sized + Send + Sync + 'static,
+{
   fn get_id(&self) -> u32 {
     self.id
   }
 }
 
-impl<M: Sized + Send + 'static> EntityActorHandleStruct<M> {
-  pub fn new(id: u32, sender: Sender<ActorMessage<M>>) -> Self {
-    Self { id, sender }
+impl<M, F> EntityActorHandleStruct<M, F>
+where
+  M: Sized + Send + 'static,
+  F: Sized + Send + Sync + 'static,
+{
+  pub fn new(id: u32, sender: Sender<ActorMessage<M>>, final_properties: F) -> Self {
+    Self {
+      id,
+      sender,
+      final_properties: std::sync::Arc::new(final_properties),
+    }
   }
 }

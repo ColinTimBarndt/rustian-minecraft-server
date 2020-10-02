@@ -5,7 +5,10 @@ use std::collections::VecDeque;
 /// are kept as small as possible by re-using IDs that aren't
 /// used any more.
 pub struct EntityIdGenerator {
+  /// Vec storing a bool that stores whether the id at the
+  /// given index is used
   ids: Vec<bool>,
+  /// Queue for recently freed ids to be reused
   free_ids: VecDeque<u32>,
 }
 
@@ -32,13 +35,16 @@ impl EntityIdGenerator {
   pub fn free(&mut self, id: u32) {
     let us = id as usize;
     if us < self.ids.len() {
-      let prev = self.ids[us];
-      if !prev {
+      let is_reserved = self.ids[us];
+      if !is_reserved {
         return;
       }
+      // Is it the last element of the vec?
+      // Example: [true, false, false, false, true] where id = 4
       if us - 1 == self.ids.len() {
         self.ids.pop();
         // Try to further decrease both array sizes by simplifying the arrays
+        // Example: convert [true, false, false, false, true] to [true] if id = 4
         while self.ids.len() > 0 && !self.ids[self.ids.len() - 1] {
           self.ids.pop().unwrap();
           let freed_id = self.ids.len() as u32;
@@ -54,7 +60,7 @@ impl EntityIdGenerator {
   pub fn clean_up(&mut self) {
     // //Unstable:
     // self.free.make_contiguous().sort();
-    let mut temp: Vec<u32> = self.free_ids.iter().map(|x| *x).collect();
+    let mut temp: Vec<u32> = self.free_ids.iter().cloned().collect();
     temp.sort_unstable();
     self.free_ids = temp.into_iter().collect();
   }

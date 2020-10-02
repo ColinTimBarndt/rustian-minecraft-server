@@ -1,20 +1,21 @@
 use super::chunk_generator::ChunkGenerator;
 use super::chunk_loader::ChunkLoader;
-use super::region::*;
-use super::Block;
-use super::EntityList;
+use super::{entity_list::EntityListEntry, region::*, Block, EntityList};
 use crate::actor_model::*;
 use crate::helpers::{NamespacedKey, Vec3d};
+use crate::packet::PlayerConnectionPacketHandle;
+use crate::server::universe::{entity, UniverseHandle};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use tokio::sync::mpsc::{self};
-use tokio::sync::oneshot::{channel, Sender};
+use tokio::sync::{mpsc, oneshot};
 
 pub struct BlockWorld {
   regions: HashMap<RegionPosition, RegionHandle>,
   loaded_chunks: HashSet<super::ChunkPosition>,
+  handle: Option<<BlockWorld as Actor>::Handle>,
   pub id: NamespacedKey,
+  pub universe: UniverseHandle,
   pub generator: Box<dyn ChunkGenerator>,
   pub loader: Box<dyn ChunkLoader>,
   pub entities: EntityList,
@@ -22,13 +23,15 @@ pub struct BlockWorld {
 }
 
 impl BlockWorld {
-  pub fn new<G, L>(id: NamespacedKey, generator: G, loader: L) -> Self
+  pub fn new<G, L>(universe: UniverseHandle, id: NamespacedKey, generator: G, loader: L) -> Self
   where
     G: Into<Box<dyn ChunkGenerator>>,
     L: Into<Box<dyn ChunkLoader>>,
   {
     Self {
       id,
+      universe,
+      handle: None,
       regions: HashMap::new(),
       loaded_chunks: HashSet::new(),
       generator: generator.into(),
@@ -39,19 +42,23 @@ impl BlockWorld {
   }
   /// Returns a block at the given world position. If the chunk containing the
   /// block is not loaded, it is loaded/generated if `load = true`, otherwise
-  /// `Block::Air` will be returned.
-  pub async fn get_block_at_pos(&mut self, pos: Vec3d<i32>, load: bool) -> Block {
+  /// `None` will be returned. `None` will also be returned if the position is
+  /// outside of the world bounds.
+  pub async fn get_block_at_pos(&mut self, pos: Vec3d<i32>, load: bool) -> Option<Block> {
     if !(0..256).contains(pos.get_y_as_ref()) {
       // Outside of chunk building limit
-      return Block::Air;
+      return None;
     }
     let region_position: RegionPosition = pos.into();
-    let loaded = self.regions.get_mut(&region_position);
-    if let Some(loaded) = loaded {
+    let region = self.regions.get_mut(&region_position);
+    // Is the region of the chunk loaded?
+    if let Some(loaded_region) = region {
       let chunk_loaded = self
         .loaded_chunks
         .contains(&super::ChunkPosition::from(pos));
+      // Is the chunk in the region loaded?
       if !chunk_loaded {
+        // Load or generate the chunk
         if load {
           let chk_pos = super::ChunkPosition::from(pos);
           let chunk = if let Some(loaded_chk) = self.loader.load_chunk(chk_pos) {
@@ -64,14 +71,14 @@ impl BlockWorld {
             pos.get_y() as u8,
             (pos.get_z() % 16) as u8,
           ));
-          loaded.set_chunk(chunk).await.unwrap();
+          loaded_region.set_chunk(chunk).await.unwrap();
           self.loaded_chunks.insert(chk_pos);
-          block
+          Some(block)
         } else {
-          Block::Air
+          None
         }
       } else {
-        loaded
+        loaded_region
           .get_block(Vec3d::new(
             pos.get_x() % super::CHUNK_BLOCK_WIDTH as i32,
             pos.get_y(),
@@ -79,10 +86,11 @@ impl BlockWorld {
           ))
           .await
           .expect("Unable to get block in region")
-          .unwrap_or(Block::Air)
+          .map(|b| Some(b))
+          .unwrap_or(None)
       }
     } else {
-      Block::Air
+      None
     }
   }
 }
@@ -112,6 +120,27 @@ impl Actor for BlockWorld {
         }
         true
       }
+      WorldMessage::SpawnEntityPlayerOnline {
+        connection,
+        profile,
+        callback,
+      } => {
+        if let Ok(id) = self.universe.reserve_entity_id().await {
+          let entity_player = entity::player::EntityPlayer::new(id, profile);
+          let controller =
+            entity::player::online_controller::Controller::new(connection, entity_player);
+          let (jh, handle) = controller.spawn_actor();
+          let cloned_handle = handle.clone();
+          self.entities.insert((jh, handle));
+          drop(callback.send(cloned_handle));
+        } else {
+          eprintln!(
+            "[world.rs] Failed to reserve id for player entity {} ({})",
+            profile.name, profile.uuid
+          );
+        }
+        true
+      }
     }
   }
 
@@ -121,12 +150,25 @@ impl Actor for BlockWorld {
   ) -> Self::Handle {
     sender.into()
   }
+
+  fn set_handle(&mut self, handle: Self::Handle) {
+    self.handle = Some(handle);
+  }
+
+  fn clone_handle(&self) -> Self::Handle {
+    self.handle.as_ref().unwrap().clone()
+  }
 }
 
 pub enum WorldMessage {
-  /// A position and a callback
-  GetBlockAtPos(Vec3d<i32>, Sender<Block>, bool),
-  GetSpawnPosition(Sender<Vec3d<f64>>),
+  /// A position, a callback and whether to load unloaded chunks
+  GetBlockAtPos(Vec3d<i32>, oneshot::Sender<Option<Block>>, bool),
+  GetSpawnPosition(oneshot::Sender<Vec3d<f64>>),
+  SpawnEntityPlayerOnline {
+    connection: PlayerConnectionPacketHandle,
+    profile: entity::player::game_profile::GameProfile,
+    callback: oneshot::Sender<entity::player::online_controller::ControllerHandle>,
+  },
 }
 
 pub type WorldHandle = ActorHandleStruct<WorldMessage>;
@@ -137,8 +179,8 @@ impl WorldHandle {
     &mut self,
     pos: Vec3d<i32>,
     load_if_needed: bool,
-  ) -> Result<Block, ()> {
-    let (send, recv) = channel();
+  ) -> Result<Option<Block>, ()> {
+    let (send, recv) = oneshot::channel();
     match self
       .send_raw_message(ActorMessage::Other(WorldMessage::GetBlockAtPos(
         pos,
@@ -152,9 +194,27 @@ impl WorldHandle {
     }
   }
   pub async fn get_spawn_position(&mut self) -> Result<Vec3d<f64>, ()> {
-    let (send, recv) = channel();
+    let (send, recv) = oneshot::channel();
     match self
       .send_raw_message(ActorMessage::Other(WorldMessage::GetSpawnPosition(send)))
+      .await
+    {
+      Ok(_) => Ok(recv.await.unwrap()),
+      Err(_) => Err(()),
+    }
+  }
+  pub async fn spawn_entity_player_online(
+    &mut self,
+    connection: PlayerConnectionPacketHandle,
+    profile: entity::player::game_profile::GameProfile,
+  ) -> Result<entity::player::online_controller::ControllerHandle, ()> {
+    let (send, recv) = oneshot::channel();
+    match self
+      .send_raw_message(ActorMessage::Other(WorldMessage::SpawnEntityPlayerOnline {
+        connection,
+        profile,
+        callback: send,
+      }))
       .await
     {
       Ok(_) => Ok(recv.await.unwrap()),

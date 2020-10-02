@@ -33,11 +33,11 @@ impl PacketSerialIn for PluginMessage {
     }
 }
 
-impl std::convert::From<super::super::send::PluginMessage> for PluginMessage {
+impl<'a> std::convert::From<super::super::send::PluginMessage<'a>> for PluginMessage {
     fn from(other: super::super::send::PluginMessage) -> Self {
         Self {
             channel: other.channel,
-            data: other.data,
+            data: other.data.to_vec(),
         }
     }
 }
