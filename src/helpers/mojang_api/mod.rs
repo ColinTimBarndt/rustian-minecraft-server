@@ -6,19 +6,17 @@ use crate::server::universe::entity::player::game_profile::{GameProfile, GamePro
 use hexdigest::calc_hash;
 use openssl::pkey::Private;
 use openssl::rsa::Rsa;
+use reqwest::Url;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-fn create_joined_url(username: &str, hash: &str, ip: &str) -> String {
-  format!(
-    "{base}/hasJoined?username={user}&serverId={hash}&ip={ip}",
-    base = SESSION_SERVER_BASE_URL,
-    user = username,
-    hash = hash,
-    ip = ip
+fn create_joined_url(username: &str, hash: &str, ip: &str) -> Url {
+  Url::parse_with_params(
+    &format!("{base}/hasJoined", base = SESSION_SERVER_BASE_URL),
+    &[("username", username), ("serverId", hash), ("ip", ip)],
   )
+  .unwrap()
 }
 
 #[derive(Debug)]
@@ -36,7 +34,6 @@ pub async fn has_joined(
   username: &str,
   user_ip: &SocketAddr,
 ) -> Result<Option<GameProfile>, Error> {
-  use std::str::FromStr;
   let ip_str = user_ip.ip().to_string();
   let hash = calc_hash(&[
     server_id.as_bytes(),
@@ -46,7 +43,7 @@ pub async fn has_joined(
 
   let client = reqwest::Client::new();
   let response_raw = client
-    .get(reqwest::Url::from_str(&create_joined_url(username, &hash, &ip_str)).unwrap())
+    .get(create_joined_url(username, &hash, &ip_str))
     .send()
     .await
     .map_err(|_| Error::ServiceUnavailable)?;
@@ -60,7 +57,10 @@ pub async fn has_joined(
     .await
     .map_err(|_| Error::MalformedResponse)?;
 
-  let uuid = uuid::Uuid::from_str(&response.id).map_err(|_| Error::MalformedResponse)?;
+  let uuid = {
+    use std::str::FromStr;
+    uuid::Uuid::from_str(&response.id).map_err(|_| Error::MalformedResponse)
+  }?;
 
   Ok(Some(GameProfile::new(
     uuid,

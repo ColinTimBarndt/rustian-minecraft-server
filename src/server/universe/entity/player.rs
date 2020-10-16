@@ -1,5 +1,5 @@
 use super::*;
-use crate::helpers::{chat_components, Vec3d};
+use crate::helpers::{chat_components, EulerAngle, Vec3d};
 use crate::server::registries::EntityType;
 
 pub mod game_profile;
@@ -11,12 +11,12 @@ pub struct EntityPlayer {
   pub id: u32,
   pub custom_name: Option<Vec<chat_components::ChatComponent>>,
   pub position: Vec3d<f64>,
-  pub yaw: f32,
-  pub pitch: f32,
+  pub head_rotation: EulerAngle,
   pub health: f32,
   pub food: f32,
   pub saturation: f32,
   pub selected_hotbar_slot: u8,
+  pub on_ground: bool,
   pub settings: PlayerSettings,
   pub profile: game_profile::GameProfile,
 }
@@ -36,13 +36,13 @@ impl Default for EntityPlayer {
     Self {
       id: 0,
       custom_name: None,
-      position: Vec3d::new(0.0, 0.0, 0.0),
-      yaw: 0.0,
-      pitch: 0.0,
+      position: Default::default(),
+      head_rotation: Default::default(),
       health: 20.0,
       food: 20.0,
       saturation: 20.0,
       selected_hotbar_slot: 0,
+      on_ground: false,
       settings: Default::default(),
       profile: game_profile::GameProfile::new_offline("Steve"),
     }
@@ -74,14 +74,23 @@ pub mod online_controller {
   /// Actor that handles player behavior
   pub struct Controller {
     pub connection: PlayerConnectionPacketHandle,
-    pub player: EntityPlayer,
+    pub entity: EntityPlayer,
     handle: Option<<Controller as Actor>::Handle>,
   }
 
   /// Other messages this Actor can receive
   pub enum ControllerMessage {
+    /// Client updated settings
     UpdateSettings(PlayerSettings),
+    /// Client (`update_client: false`) or
+    /// server (`update_client: true`) changes hotbar slot
     SetSelectedHotbarSlot { slot: u8, update_client: bool },
+    /// Client moved
+    PlayerMoved {
+      position: Option<Vec3d<f64>>,
+      rotation: Option<EulerAngle>,
+      on_ground: bool,
+    },
   }
 
   impl ControllerHandle {
@@ -97,8 +106,7 @@ pub mod online_controller {
           settings,
         )))
         .await
-        .map_err(|_| ())?;
-      Ok(())
+        .map_err(|_| ())
     }
     pub async fn set_selected_hotbar_slot(
       &mut self,
@@ -114,8 +122,22 @@ pub mod online_controller {
           },
         ))
         .await
-        .map_err(|_| ())?;
-      Ok(())
+        .map_err(|_| ())
+    }
+    pub async fn player_moved(
+      &mut self,
+      position: Option<Vec3d<f64>>,
+      rotation: Option<EulerAngle>,
+      on_ground: bool,
+    ) -> Result<(), ()> {
+      self
+        .send_raw_message(ActorMessage::Other(ControllerMessage::PlayerMoved {
+          position,
+          rotation,
+          on_ground,
+        }))
+        .await
+        .map_err(|_| ())
     }
   }
 
@@ -124,10 +146,10 @@ pub mod online_controller {
     super::EntityActorHandleStruct<ControllerMessage, SharedControllerProperties>;
 
   impl Controller {
-    pub fn new(con: PlayerConnectionPacketHandle, player: EntityPlayer) -> Self {
+    pub fn new(con: PlayerConnectionPacketHandle, entity: EntityPlayer) -> Self {
       Self {
         connection: con,
-        player,
+        entity,
         handle: None,
       }
     }
@@ -136,7 +158,7 @@ pub mod online_controller {
       let packet = crate::packet::play::send::HeldItemChange { hotbar_slot: slot };
       let con = &mut self.connection;
       con.send_packet(packet).await?;
-      self.player.selected_hotbar_slot = slot;
+      self.entity.selected_hotbar_slot = slot;
       Ok(())
     }
   }
@@ -153,7 +175,7 @@ pub mod online_controller {
     async fn handle_message(&mut self, message: <Self::Handle as ActorHandle>::Message) -> bool {
       match message {
         ControllerMessage::UpdateSettings(settings_new) => {
-          self.player.settings = settings_new;
+          self.entity.settings = settings_new;
           // TODO: Send chunks etc
           true
         }
@@ -161,7 +183,7 @@ pub mod online_controller {
           update_client: false,
           slot,
         } => {
-          self.player.selected_hotbar_slot = slot;
+          self.entity.selected_hotbar_slot = slot;
           true
         }
         ControllerMessage::SetSelectedHotbarSlot {
@@ -174,6 +196,21 @@ pub mod online_controller {
             false
           }
         },
+        ControllerMessage::PlayerMoved {
+          position,
+          rotation,
+          on_ground,
+        } => {
+          // TODO: movement validation
+          self.entity.on_ground = on_ground;
+          if let Some(position) = position {
+            self.entity.position = position;
+          }
+          if let Some(rotation) = rotation {
+            self.entity.head_rotation = rotation;
+          }
+          true
+        }
       }
     }
 
@@ -182,11 +219,11 @@ pub mod online_controller {
       sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
     ) -> Self::Handle {
       ControllerHandle::new(
-        self.player.id,
+        self.entity.id,
         sender,
         SharedControllerProperties {
-          name: self.player.profile.name.clone(),
-          uuid: self.player.profile.uuid.clone(),
+          name: self.entity.profile.name.clone(),
+          uuid: self.entity.profile.uuid.clone(),
         },
       )
     }
@@ -205,7 +242,7 @@ pub mod online_controller {
       write!(
         f,
         "Online Player Controller ({} / {})",
-        self.player.profile.name, self.player.profile.uuid
+        self.entity.profile.name, self.entity.profile.uuid
       )
     }
   }

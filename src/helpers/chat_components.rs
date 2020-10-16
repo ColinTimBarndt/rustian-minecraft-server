@@ -1,5 +1,6 @@
 //! See this [Minecraft Forum post](https://www.minecraftforum.net/forums/minecraft-java-edition/redstone-discussion-and/351959-1-12-json-text-component-for-tellraw-title-books)
 
+use super::fast::json::escape_write;
 use serde_json::Map;
 use serde_json::Value as JsonValue;
 use std::borrow::Cow;
@@ -40,15 +41,18 @@ pub enum ChatComponentType {
 }
 
 impl ChatComponentType {
-    fn make_json(self) -> Map<String, JsonValue> {
+    fn make_json(&self) -> Map<String, JsonValue> {
         use ChatComponentType::*;
         let mut obj = Map::with_capacity(10);
         match self {
             Text(text) => {
-                obj.insert("text".to_owned(), JsonValue::String(text.into()));
+                obj.insert("text".to_owned(), JsonValue::String(text.clone().into()));
             }
             Translate { key, with } => {
-                obj.insert("translate".to_owned(), JsonValue::String(key.into()));
+                obj.insert(
+                    "translate".to_owned(),
+                    JsonValue::String(key.clone().into()),
+                );
                 if with.len() > 0 {
                     obj.insert(
                         "with".to_owned(),
@@ -62,18 +66,24 @@ impl ChatComponentType {
                 value,
             } => {
                 let mut score = Map::with_capacity(2);
-                score.insert("name".to_owned(), JsonValue::String(name.into()));
-                score.insert("objective".to_owned(), JsonValue::String(objective.into()));
+                score.insert("name".to_owned(), JsonValue::String(name.clone().into()));
+                score.insert(
+                    "objective".to_owned(),
+                    JsonValue::String(objective.clone().into()),
+                );
                 if let Some(value) = value {
-                    score.insert("value".to_owned(), JsonValue::String(value.into()));
+                    score.insert("value".to_owned(), JsonValue::String(value.clone().into()));
                 }
                 obj.insert("score".to_owned(), JsonValue::Object(score));
             }
             Selector(sel) => {
-                obj.insert("selector".to_owned(), JsonValue::String(sel.into()));
+                obj.insert("selector".to_owned(), JsonValue::String(sel.clone().into()));
             }
             Keybind(action) => {
-                obj.insert("keybind".to_owned(), JsonValue::String(action.into()));
+                obj.insert(
+                    "keybind".to_owned(),
+                    JsonValue::String(action.clone().into()),
+                );
             }
         }
         obj
@@ -131,25 +141,6 @@ impl ChatComponentType {
                 buffer.extend_from_slice(br#"{"keybind":""#);
                 escape_write(action, buffer);
                 buffer.push(b'"');
-            }
-        }
-    }
-}
-
-#[inline]
-fn escape_write(text: &str, buffer: &mut Vec<u8>) {
-    let len = text.len();
-    buffer.reserve(len + (len >> 3));
-    for c in text.chars() {
-        match c {
-            '\\' => buffer.extend_from_slice(b"\\\\"),
-            '"' => buffer.extend_from_slice(b"\\\""),
-            '\n' => buffer.extend_from_slice(b"\\n"),
-            '\r' => buffer.extend_from_slice(b"\\r"),
-            c => {
-                let mut buf = [0u8; 4];
-                let s = c.encode_utf8(&mut buf);
-                buffer.extend_from_slice(s.as_bytes());
             }
         }
     }
@@ -217,8 +208,32 @@ pub enum ChatColor {
     /// Implemented for Minecraft 1.16 and above
     Custom(super::Color),
 }
-impl From<ChatColor> for String {
-    fn from(color: ChatColor) -> Self {
+impl ChatColor {
+    pub fn code(&self) -> &'static str {
+        use ChatColor::*;
+        match self {
+            Black => "§0",
+            DarkBlue => "§1",
+            DarkGreen => "§2",
+            DarkAqua => "§3",
+            DarkRed => "§4",
+            DarkPurple => "§5",
+            Gold => "§6",
+            Gray => "§7",
+            DarkGray => "§8",
+            Blue => "§9",
+            Green => "§a",
+            Aqua => "§b",
+            Red => "§c",
+            LightPurple => "§d",
+            Yellow => "§e",
+            White => "§f",
+            Custom(_) => "",
+        }
+    }
+}
+impl From<&ChatColor> for CowStr {
+    fn from(color: &ChatColor) -> Self {
         use ChatColor::*;
         match color {
             Black => "black",
@@ -237,9 +252,9 @@ impl From<ChatColor> for String {
             LightPurple => "light_purple",
             Yellow => "yellow",
             White => "white",
-            Custom(color) => return color.to_hex_code(),
+            Custom(color) => return color.to_hex_code().into(),
         }
-        .to_owned()
+        .into()
     }
 }
 
@@ -253,7 +268,13 @@ impl ChatComponent {
     pub fn text(text: impl Into<CowStr>) -> Self {
         ChatComponent::new(ChatComponentType::Text(text.into()))
     }
-    pub fn make_json(self) -> JsonValue {
+    pub fn translate(key: impl Into<CowStr>, with: Vec<ChatComponent>) -> Self {
+        ChatComponent::new(ChatComponentType::Translate {
+            key: key.into(),
+            with,
+        })
+    }
+    pub fn make_json(&self) -> JsonValue {
         if self.color.is_none()
             && self.bold.is_none()
             && self.italic.is_none()
@@ -270,8 +291,11 @@ impl ChatComponent {
             }
         }
         let mut obj = self.component_type.make_json();
-        if let Some(color) = self.color {
-            obj.insert("color".to_owned(), JsonValue::String(color.into()));
+        if let Some(color) = self.color.as_ref() {
+            obj.insert(
+                "color".to_owned(),
+                JsonValue::String(CowStr::from(color).into()),
+            );
         }
         if let Some(bold) = self.bold {
             obj.insert("bold".to_owned(), JsonValue::Bool(bold));
@@ -288,16 +312,19 @@ impl ChatComponent {
         if let Some(obfuscated) = self.obfuscated {
             obj.insert("obfuscated".to_owned(), JsonValue::Bool(obfuscated));
         }
-        if let Some(insertion) = self.insertion {
-            obj.insert("insertion".to_owned(), JsonValue::String(insertion.into()));
+        if let Some(insertion) = &self.insertion {
+            obj.insert(
+                "insertion".to_owned(),
+                JsonValue::String(insertion.clone().into()),
+            );
         }
-        if let Some(hover) = self.hover_event {
+        if let Some(hover) = &self.hover_event {
             obj.insert(
                 "hover_event".to_owned(),
                 JsonValue::Object(hover.make_json()),
             );
         }
-        if let Some(click) = self.click_event {
+        if let Some(click) = &self.click_event {
             obj.insert(
                 "click_event".to_owned(),
                 JsonValue::Object(click.make_json()),
@@ -330,7 +357,7 @@ impl ChatComponent {
         let bools = [&b"false"[..], &b"true"[..]];
         if let Some(color) = self.color {
             buffer.extend_from_slice(br#","color":""#);
-            buffer.extend_from_slice(String::from(color).as_bytes());
+            buffer.extend_from_slice(CowStr::from(&color).as_bytes());
             buffer.push(b'"');
         }
         if let Some(bold) = self.bold {
@@ -438,13 +465,13 @@ pub enum ClickEvent {
 }
 
 impl ClickEvent {
-    pub fn make_json(self) -> Map<String, JsonValue> {
+    pub fn make_json(&self) -> Map<String, JsonValue> {
         use ClickEvent::*;
         let mut obj = Map::with_capacity(2);
         let res: (&str, JsonValue) = match self {
-            OpenUrl(url) => ("open_url", JsonValue::String(url)),
-            RunCommand(cmd) => ("run_command", JsonValue::String(cmd)),
-            SuggestCommand(cmd) => ("suggest_command", JsonValue::String(cmd)),
+            OpenUrl(url) => ("open_url", JsonValue::String(url.clone())),
+            RunCommand(cmd) => ("run_command", JsonValue::String(cmd.clone())),
+            SuggestCommand(cmd) => ("suggest_command", JsonValue::String(cmd.clone())),
             ChangePage(page) => ("change_page", JsonValue::String(page.to_string())),
         };
         obj.insert("action".to_owned(), JsonValue::String(res.0.to_owned()));
@@ -483,7 +510,7 @@ pub enum HoverEvent {
 }
 
 impl HoverEvent {
-    pub fn make_json(self) -> Map<String, JsonValue> {
+    pub fn make_json(&self) -> Map<String, JsonValue> {
         use HoverEvent::*;
         let mut obj = Map::with_capacity(2);
         let res: (&str, JsonValue) = match self {

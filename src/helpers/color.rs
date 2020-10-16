@@ -2,7 +2,7 @@ use super::chat_components::ChatColor;
 use std::convert::From;
 use std::default::Default;
 
-#[derive(Copy, Clone, Debug, Hash)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Color {
   pub red: u8,
   pub green: u8,
@@ -116,7 +116,26 @@ impl From<ChatColor> for Color {
 
 impl From<Color> for ChatColor {
   fn from(color: Color) -> ChatColor {
-    ChatColor::Custom(color)
+    use ChatColor::*;
+    match color {
+      Color::BLACK => Black,
+      Color::CHAT_DARK_BLUE => DarkBlue,
+      Color::CHAT_DARK_GREEN => DarkGreen,
+      Color::CHAT_DARK_AQUA => DarkAqua,
+      Color::CHAT_DARK_RED => DarkRed,
+      Color::CHAT_DARK_PURPLE => DarkPurple,
+      Color::CHAT_GOLD => Gold,
+      Color::CHAT_GRAY => Gray,
+      Color::CHAT_DARK_GRAY => DarkGray,
+      Color::CHAT_BLUE => Blue,
+      Color::CHAT_GREEN => Green,
+      Color::CHAT_AQUA => Aqua,
+      Color::CHAT_RED => Red,
+      Color::CHAT_LIGHT_PURPLE => LightPurple,
+      Color::CHAT_YELLOW => Yellow,
+      Color::WHITE => White,
+      color => Custom(color),
+    }
   }
 }
 

@@ -45,7 +45,7 @@ impl BlockWorld {
   /// `None` will be returned. `None` will also be returned if the position is
   /// outside of the world bounds.
   pub async fn get_block_at_pos(&mut self, pos: Vec3d<i32>, load: bool) -> Option<Block> {
-    if !(0..256).contains(pos.get_y_as_ref()) {
+    if !(0..256).contains(&pos.y) {
       // Outside of chunk building limit
       return None;
     }
@@ -67,9 +67,9 @@ impl BlockWorld {
             self.generator.generate(chk_pos)
           };
           let block = chunk.get_block_at_pos(Vec3d::new(
-            (pos.get_x() % 16) as u8,
-            pos.get_y() as u8,
-            (pos.get_z() % 16) as u8,
+            (pos.x % 16) as u8,
+            pos.y as u8,
+            (pos.z % 16) as u8,
           ));
           loaded_region.set_chunk(chunk).await.unwrap();
           self.loaded_chunks.insert(chk_pos);
@@ -80,9 +80,9 @@ impl BlockWorld {
       } else {
         loaded_region
           .get_block(Vec3d::new(
-            pos.get_x() % super::CHUNK_BLOCK_WIDTH as i32,
-            pos.get_y(),
-            pos.get_z() % super::CHUNK_BLOCK_WIDTH as i32,
+            pos.x % super::CHUNK_BLOCK_WIDTH as i32,
+            pos.y,
+            pos.z % super::CHUNK_BLOCK_WIDTH as i32,
           ))
           .await
           .expect("Unable to get block in region")
@@ -121,24 +121,84 @@ impl Actor for BlockWorld {
         true
       }
       WorldMessage::SpawnEntityPlayerOnline {
-        connection,
-        profile,
+        mut connection,
+        mut entity,
+        generate_id,
         callback,
       } => {
-        if let Ok(id) = self.universe.reserve_entity_id().await {
-          let entity_player = entity::player::EntityPlayer::new(id, profile);
-          let controller =
-            entity::player::online_controller::Controller::new(connection, entity_player);
-          let (jh, handle) = controller.spawn_actor();
-          let cloned_handle = handle.clone();
-          self.entities.insert((jh, handle));
-          drop(callback.send(cloned_handle));
-        } else {
-          eprintln!(
-            "[world.rs] Failed to reserve id for player entity {} ({})",
-            profile.name, profile.uuid
-          );
-        }
+        let mut universe = self.universe.clone();
+        let mut world = self.clone_handle();
+        // Do this async because this thread has better things to do
+        tokio::task::spawn(async move {
+          if let Err(e) = (async {
+            {
+              use crate::packet::play::send::{
+                ChunkData, PlayerPositionAndLook, UpdateViewPosition,
+              };
+              if generate_id {
+                if let Ok(id) = universe.reserve_entity_id().await {
+                  entity.id = id;
+                } else {
+                  return Err(format!(
+                    "[world.rs] Failed to reserve id for player entity {} ({})",
+                    entity.profile.name, entity.profile.uuid
+                  ));
+                }
+              }
+              // Send these packets:
+              // - UpdateViewPosition
+              // - UpdateLight
+              // - ChunkData
+              // - WorldBorder
+              // - SpawnPosition
+              // - PlayerPositionAndLook
+
+              // ✅ UpdateViewPosition
+              connection
+                .send_packet(UpdateViewPosition {
+                  position: super::ChunkPosition::from(entity.position),
+                })
+                .await?;
+
+              // TODO
+
+              // ✅ PlayerPositionAndLook
+              connection
+                .send_teleport_packet(PlayerPositionAndLook::create_abs(
+                  0,
+                  entity.position,
+                  entity.head_rotation,
+                ))
+                .await?
+                .await
+                .map_err(|_| "Failed to await teleport callback")?;
+
+              println!("Received teleport callback!!11!elf!");
+
+              // Then, spawn player actor
+              let controller =
+                entity::player::online_controller::Controller::new(connection, entity);
+              let (jh, handle) = controller.spawn_actor();
+              let cloned_handle = handle.clone();
+              world
+                .insert_entity_player_online((jh, handle))
+                .await
+                .expect("[world.rs] Failed to communicate with own world");
+              let _ = callback.send(cloned_handle);
+              Ok(())
+            }
+          })
+          .await
+          {
+            // Error handling
+            eprintln!("[world.rs/SpawnEntityPlayerOnline] {}", e);
+            // TODO: handle error
+          }
+        });
+        true
+      }
+      WorldMessage::PrivateInsertEntityPlayerOnline(tuple) => {
+        self.entities.insert(tuple);
         true
       }
     }
@@ -166,10 +226,17 @@ pub enum WorldMessage {
   GetSpawnPosition(oneshot::Sender<Vec3d<f64>>),
   SpawnEntityPlayerOnline {
     connection: PlayerConnectionPacketHandle,
-    profile: entity::player::game_profile::GameProfile,
+    entity: entity::player::EntityPlayer,
+    generate_id: bool,
     callback: oneshot::Sender<entity::player::online_controller::ControllerHandle>,
   },
+  PrivateInsertEntityPlayerOnline(EntityPlayerOnlineHandleTuple),
 }
+
+type EntityPlayerOnlineHandleTuple = (
+  tokio::task::JoinHandle<entity::player::online_controller::Controller>,
+  entity::player::online_controller::ControllerHandle,
+);
 
 pub type WorldHandle = ActorHandleStruct<WorldMessage>;
 
@@ -193,6 +260,7 @@ impl WorldHandle {
       Err(_) => Err(()),
     }
   }
+  /// Gets the spawn position of this world.
   pub async fn get_spawn_position(&mut self) -> Result<Vec3d<f64>, ()> {
     let (send, recv) = oneshot::channel();
     match self
@@ -203,16 +271,35 @@ impl WorldHandle {
       Err(_) => Err(()),
     }
   }
+  /// Spawns a new online player entity.
+  /// The entity id does not matter if generate_id
+  /// is set to `true` because it is then going to
+  /// be overridden with a new unique id generated
+  /// by the universe.
+  ///
+  /// This function is also going to handle the process
+  /// of telling the connected client about the world by
+  /// sending the following packets:
+  ///
+  /// - PlayerPositionAndLook
+  /// - UpdateViewPosition
+  /// - UpdateLight
+  /// - ChunkData
+  /// - WorldBorder
+  /// - SpawnPosition
+  /// - Player Position And Look
   pub async fn spawn_entity_player_online(
     &mut self,
     connection: PlayerConnectionPacketHandle,
-    profile: entity::player::game_profile::GameProfile,
+    entity: entity::player::EntityPlayer,
+    generate_id: bool,
   ) -> Result<entity::player::online_controller::ControllerHandle, ()> {
     let (send, recv) = oneshot::channel();
     match self
       .send_raw_message(ActorMessage::Other(WorldMessage::SpawnEntityPlayerOnline {
         connection,
-        profile,
+        entity,
+        generate_id,
         callback: send,
       }))
       .await
@@ -220,6 +307,17 @@ impl WorldHandle {
       Ok(_) => Ok(recv.await.unwrap()),
       Err(_) => Err(()),
     }
+  }
+  async fn insert_entity_player_online(
+    &mut self,
+    handles: EntityPlayerOnlineHandleTuple,
+  ) -> Result<(), ()> {
+    self
+      .send_raw_message(ActorMessage::Other(
+        WorldMessage::PrivateInsertEntityPlayerOnline(handles),
+      ))
+      .await
+      .map_err(|_| ())
   }
 }
 

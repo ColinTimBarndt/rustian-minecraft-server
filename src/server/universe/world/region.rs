@@ -10,9 +10,18 @@ use std::sync::Arc;
 use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
 use tokio::sync::{broadcast, oneshot};
 
+/// Width of a region in chunks. One region
+/// contains `x * x` chunks where `x` is this
+/// constant.
 pub const REGION_CHUNK_WIDTH: u32 = 2;
+
+/// The factor to multiply a region position with to get
+/// the lowest block position inside the chunk.
+/// This is the width of a region in blocks.
 const COORDINATE_SCALE: i32 = (REGION_CHUNK_WIDTH * super::CHUNK_BLOCK_WIDTH) as i32;
 
+/// A region contains the chunks and is responsible to
+/// actions regarding to blocks.
 pub struct Region {
   position: RegionPosition,
   chunks: [Option<Chunk>; (REGION_CHUNK_WIDTH * REGION_CHUNK_WIDTH) as usize],
@@ -100,11 +109,12 @@ impl RegionPosition {
     )
   }
 }
+
 impl From<Vec3d<i32>> for RegionPosition {
   fn from(vec: Vec3d<i32>) -> Self {
     Self {
-      x: vec.get_x() / COORDINATE_SCALE,
-      z: vec.get_z() / COORDINATE_SCALE,
+      x: vec.x / COORDINATE_SCALE,
+      z: vec.z / COORDINATE_SCALE,
     }
   }
 }
@@ -166,6 +176,7 @@ impl Actor for Region {
       r
     };
     // This loop handles all incoming messages before processing the next tick
+    // TODO: Make this async
     loop {
       // Try to read a message
       match recv.try_recv() {
@@ -215,9 +226,9 @@ impl Actor for Region {
         offset: off,
         channel: send,
       } => {
-        if (0..COORDINATE_SCALE).contains(off.get_x_as_ref())
-          && (0..256).contains(off.get_y_as_ref())
-          && (0..COORDINATE_SCALE).contains(off.get_z_as_ref())
+        if (0..COORDINATE_SCALE).contains(&off.x)
+          && (0..256).contains(&off.y)
+          && (0..COORDINATE_SCALE).contains(&off.z)
         {
           if let Some(chunk) = self.get_chunk_containing_offset(off.clone()) {
             let chk_off = (Into::<ChunkPosition>::into(off.clone())).get_offset();
@@ -225,9 +236,9 @@ impl Actor for Region {
             send_block(
               send,
               Some(chunk.get_block_at_pos(Vec3d::new(
-                inner_offset.get_x() as u8,
-                inner_offset.get_y() as u8,
-                inner_offset.get_z() as u8,
+                inner_offset.x as u8,
+                inner_offset.y as u8,
+                inner_offset.z as u8,
               ))),
             );
             return true;
@@ -300,7 +311,7 @@ impl Actor for Region {
           match send.send(data) {
             Ok(_) => (),
             Err(_) => {
-              eprintln!("Failed to send chunk packet in RegionMessage::BroadcastChunk because all receivers were dropped");
+              eprintln!("[region.rs] Failed to send chunk packet in RegionMessage::BroadcastChunk because all receivers were dropped");
             }
           }
         }

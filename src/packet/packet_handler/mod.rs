@@ -1,9 +1,9 @@
 use super::*;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::spawn;
-use tokio::sync::mpsc::{channel, Sender};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time;
 
 mod packet_receiver;
@@ -19,6 +19,11 @@ pub enum PacketHandlerMessage {
   SetPing(time::Duration),
   GetPing(oneshot::Sender<time::Duration>),
   GetServer(oneshot::Sender<MinecraftServerHandle>),
+  SendTeleport(
+    crate::packet::play::send::PlayerPositionAndLook,
+    oneshot::Sender<()>,
+  ),
+  RecvTeleportConfirm(u16),
 }
 
 pub struct PacketHandler {
@@ -27,6 +32,12 @@ pub struct PacketHandler {
   outgoing_channel: Sender<PacketSenderMessage>,
   receiver_shutdown_channel: Sender<()>,
   pub ping: time::Duration,
+  /// PlayerPositionAndLook packets require the client
+  /// to answer with the given teleport id. This must be
+  /// in the same order as they were send. Therefore, a
+  /// VecDeque is a good solution to store the requests
+  /// in order.
+  pub teleport_callbacks: VecDeque<(u16, oneshot::Sender<()>)>,
 }
 
 impl PacketHandler {
@@ -36,9 +47,9 @@ impl PacketHandler {
     server: MinecraftServerHandle,
     encryption: Arc<Rsa<Private>>,
   ) -> (Sender<PacketHandlerMessage>, Sender<PacketSenderMessage>) {
-    let (sender, receiver) = channel(512);
-    let (shutdown_sender, shutdown_receiver) = channel(1);
-    let (handler_sender, mut handler_receiver) = channel(127);
+    let (sender, receiver) = mpsc::channel(512);
+    let (shutdown_sender, shutdown_receiver) = mpsc::channel(1);
+    let (handler_sender, mut handler_receiver) = mpsc::channel(127);
     let handler_sender_clone = handler_sender.clone();
     let sender_clone = sender.clone();
     let mut me = Self {
@@ -47,6 +58,7 @@ impl PacketHandler {
       outgoing_channel: sender.clone(),
       receiver_shutdown_channel: shutdown_sender,
       ping: time::Duration::from_secs(0),
+      teleport_callbacks: VecDeque::with_capacity(5),
     };
     {
       spawn(async move {
@@ -81,7 +93,7 @@ impl PacketHandler {
               CloseChannel => {
                 match me.close_channel().await {
                   Ok(()) => (),
-                  Err(e) => eprintln!("Error while closing channel: {}", e),
+                  Err(e) => eprintln!("[packet_handler] Error while closing channel: {}", e),
                 };
                 break 'HandlerChannelLoop;
               }
@@ -97,6 +109,51 @@ impl PacketHandler {
               }
               GetServer(sender) => {
                 let _ = sender.send(me.server.clone());
+              }
+              SendTeleport(packet, callback) => {
+                me.teleport_callbacks.push_front((packet.id, callback));
+                // The vec can be allocated without needing to grow because the
+                // maximum packet length is already known (3*f64+2*f32+1*var_u16).
+                let mut buffer: Vec<u8> = Vec::with_capacity(35);
+                // Serializing this packet does not produce errors
+                packet.consume_write(&mut buffer).unwrap();
+                let r = me
+                  .outgoing_channel
+                  .send(PacketSenderMessage::Packet(
+                    crate::packet::play::send::PlayerPositionAndLook::ID,
+                    buffer,
+                  ))
+                  .await;
+                if r.is_err() {
+                  eprintln!(
+                    "[packet_handler] Failed to send PlayerPositionAndLook packet through the sender channel"
+                  );
+                  me.close_channel()
+                    .await
+                    .expect("[packet_handler] Failed to send shutdown messages");
+                  break 'HandlerChannelLoop;
+                }
+              }
+              RecvTeleportConfirm(id) => {
+                let maybe_expected = me.teleport_callbacks.pop_back();
+                if let Some((expected_id, callback)) = maybe_expected {
+                  if id == expected_id {
+                    let _ = callback.send(());
+                  } else {
+                    unexpected_confirmation(&mut me).await;
+                    break 'HandlerChannelLoop;
+                  }
+                } else {
+                  unexpected_confirmation(&mut me).await;
+                  break 'HandlerChannelLoop;
+                }
+                #[inline]
+                async fn unexpected_confirmation(me: &mut PacketHandler) {
+                  eprintln!("[packet_handler] Unexpected teleport confirmation");
+                  me.close_channel()
+                    .await
+                    .expect("[packet_handler] Failed to send shutdown messages");
+                }
               }
             },
             None => {

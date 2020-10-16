@@ -1,5 +1,5 @@
 use super::{data, PacketHandlerMessage, PacketSenderMessage, PlayerConnectionState};
-use crate::server::universe::entity::player;
+use crate::server::universe::{entity::player, UniverseHandle};
 use colorful::{Color, Colorful};
 use futures::{future, future::FutureExt, pin_mut, select_biased};
 use openssl::pkey::Private;
@@ -34,14 +34,29 @@ pub struct PacketReceiver {
   pub key: Option<Arc<Rsa<Private>>>,
   pub verify_token: Option<Vec<u8>>,
   pub login_name: Option<String>,
+  /// Only Some after the login sequence finished spawning the player
   pub player: Option<player::online_controller::ControllerHandle>,
-  pub logging_in: bool,
+  /// Only Some if logging_in is not logged in yet
+  pub(in crate::packet) intermediate_player:
+    Option<Box<crate::server::universe::entity::player::EntityPlayer>>,
+  /// Only Some after logging_in reached AwaitClientSettings
+  pub universe: Option<UniverseHandle>,
+  pub(in crate::packet) logging_in: LoggingInState,
   pub address: SocketAddr,
   pub(in crate::packet) last_ping: Option<time::Instant>,
   pub(in crate::packet) last_ping_received: time::Instant,
   pub(in crate::packet) last_ping_identifier: u64,
   pub(in crate::packet) waiting_for_ping: bool,
   pub ping: time::Duration,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub(in crate::packet) enum LoggingInState {
+  NotLoggedIn,
+  LoggingIn,
+  AwaitClientSettings,
+  AwaitSpawnPlayer,
+  LoggedIn,
 }
 
 macro_rules! handle_err {
@@ -72,7 +87,9 @@ impl PacketReceiver {
       key: Some(key),
       login_name: None,
       player: None,
-      logging_in: true,
+      intermediate_player: None,
+      universe: None,
+      logging_in: LoggingInState::NotLoggedIn,
       address,
       last_ping: None,
       last_ping_received: time::Instant::now(),
@@ -369,6 +386,13 @@ impl PacketReceiver {
 
   pub fn to_reader(self) -> Reader {
     self.reader
+  }
+
+  /// Get the player handle this receiver belongs to.
+  /// This function will panic if the client has not
+  /// logged in yet (no player exists until that point).
+  pub fn get_player(&mut self) -> &mut player::online_controller::ControllerHandle {
+    self.player.as_mut().unwrap()
   }
 
   async fn perform_ping(&mut self) -> Result<(), String> {

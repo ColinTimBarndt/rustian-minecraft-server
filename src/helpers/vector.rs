@@ -3,64 +3,161 @@ use std::fmt::Display;
 
 /// The `Vec3d` structure represents a mathematical vector
 /// made of three components of any equal type
-#[derive(Clone, Debug, Copy)]
-pub struct Vec3d<T: Copy>(T, T, T);
+#[derive(Debug)]
+pub struct Vec3d<T: Sized> {
+    pub x: T,
+    pub y: T,
+    pub z: T,
+}
 
-impl<T: Copy> Display for Vec3d<T>
-where
-    T: Display,
-{
+impl<T: Clone> Clone for Vec3d<T> {
+    fn clone(&self) -> Self {
+        Self {
+            x: self.x.clone(),
+            y: self.y.clone(),
+            z: self.z.clone(),
+        }
+    }
+}
+
+impl<T: Copy> Copy for Vec3d<T> {}
+
+impl<T: Copy + Eq> Eq for Vec3d<T> {}
+
+impl<T: Default> Default for Vec3d<T> {
+    fn default() -> Vec3d<T> {
+        Vec3d {
+            x: Default::default(),
+            y: Default::default(),
+            z: Default::default(),
+        }
+    }
+}
+
+impl<T: Display> Display for Vec3d<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(f, "Vec3d({}, {}, {})", self.0, self.1, self.2)
+        write!(f, "Vec3d ({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
+impl<T> std::convert::From<Vec3d<T>> for (T, T, T) {
+    fn from(from: Vec3d<T>) -> (T, T, T) {
+        (from.x, from.y, from.z)
+    }
+}
+
+impl<T: PartialEq> std::cmp::PartialEq for Vec3d<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x && self.y == other.y && self.z == other.z
+    }
+}
+
+impl<T> std::ops::Index<usize> for Vec3d<T> {
+    type Output = T;
+    fn index(&self, idx: usize) -> &T {
+        match idx {
+            0 => &self.x,
+            1 => &self.y,
+            2 => &self.z,
+            _ => panic!("Index out of bounds: {}", idx),
+        }
+    }
+}
+
+impl<T> std::ops::IndexMut<usize> for Vec3d<T> {
+    fn index_mut(&mut self, idx: usize) -> &mut T {
+        match idx {
+            0 => &mut self.x,
+            1 => &mut self.y,
+            2 => &mut self.z,
+            _ => panic!("Index out of bounds: {}", idx),
+        }
+    }
+}
+
+impl<T> std::iter::IntoIterator for Vec3d<T> {
+    type Item = T;
+    type IntoIter = IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            pos: 0,
+            vals: [Some(self.x), Some(self.y), Some(self.z)],
+        }
+    }
+}
+
+pub struct IntoIter<T: Sized> {
+    vals: [Option<T>; 3],
+    pos: usize,
+}
+
+impl<T> std::iter::Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        match self.pos {
+            3 => None,
+            n => {
+                self.pos += 1;
+                Some(std::mem::replace(&mut self.vals[n], None).unwrap())
+            }
+        }
+    }
+}
+
+impl<T> Vec3d<T> {
+    /// Creates a new three-dimensional mathematical vector
+    pub fn new(x: T, y: T, z: T) -> Self {
+        Vec3d::<T> { x, y, z }
+    }
+    /// Returns the first component (`x`) as a reference
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
+    pub fn get_x_as_ref(&self) -> &T {
+        &(*self).x
+    }
+    /// Returns the second component (`y`) as a reference
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
+    pub fn get_y_as_ref(&self) -> &T {
+        &(*self).y
+    }
+    /// Returns the third component (`z`) as a reference
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
+    pub fn get_z_as_ref(&self) -> &T {
+        &(*self).z
+    }
+    /// Sets the value of the first component (`x`)
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
+    pub fn set_x(&mut self, x: T) {
+        (*self).x = x
+    }
+    /// Sets the value of the second component (`y`)
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
+    pub fn set_y(&mut self, y: T) {
+        (*self).y = y
+    }
+    /// Sets the value of the third component (`z`)
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
+    pub fn set_z(&mut self, z: T) {
+        (*self).z = z
     }
 }
 
 impl<T: Copy> Vec3d<T> {
-    /// Creates a new three-dimensional mathematical vector
-    pub fn new(x: T, y: T, z: T) -> Self {
-        Vec3d::<T>(x, y, z)
-    }
-    /// Returns the first component (`x`) as a reference
-    pub fn get_x_as_ref(&self) -> &T {
-        &(*self).0
-    }
-    /// Returns the second component (`y`) as a reference
-    pub fn get_y_as_ref(&self) -> &T {
-        &(*self).1
-    }
-    /// Returns the third component (`z`) as a reference
-    pub fn get_z_as_ref(&self) -> &T {
-        &(*self).2
-    }
-    /// Sets the value of the first component (`x`)
-    pub fn set_x(&mut self, x: T) {
-        (*self).0 = x
-    }
-    /// Sets the value of the second component (`y`)
-    pub fn set_y(&mut self, y: T) {
-        (*self).1 = y
-    }
-    /// Sets the value of the third component (`z`)
-    pub fn set_z(&mut self, z: T) {
-        (*self).2 = z
-    }
-}
-
-impl<T: Copy> Vec3d<T>
-where
-    T: Copy,
-{
     /// Returns a copy of the first component (`x`)
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
     pub fn get_x(&self) -> T {
-        (*self).0
+        (*self).x
     }
     /// Returns a copy of the second component (`y`)
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
     pub fn get_y(&self) -> T {
-        (*self).1
+        (*self).y
     }
     /// Returns a copy of the third component (`z`)
+    #[deprecated(since = "0.1.0", note = "access the property directly instead")]
     pub fn get_z(&self) -> T {
-        (*self).2
+        (*self).z
     }
 }
 
@@ -76,21 +173,15 @@ where T: std::convert::TryFrom<F> {
     }
 }*/
 
-impl<T: Copy> std::convert::From<Vec3d<T>> for (T, T, T) {
-    fn from(from: Vec3d<T>) -> (T, T, T) {
-        (from.0, from.1, from.2)
-    }
-}
-
 macro_rules! implement_part {
     ($A:ty, $Trait:ident, $fun:ident, $operand:tt) => {
         impl $Trait for Vec3d<$A> {
             type Output = Self;
             fn $fun(self, other: Self) -> Self::Output {
                 Vec3d::new(
-                    self.0 $operand other.0,
-                    self.1 $operand other.1,
-                    self.2 $operand other.2
+                    self.x $operand other.x,
+                    self.y $operand other.y,
+                    self.z $operand other.z
                 )
             }
         }
@@ -99,9 +190,9 @@ macro_rules! implement_part {
             type Output = Self;
             fn $fun(self, other: $A) -> Self::Output {
                 Vec3d::new(
-                    self.0 $operand other,
-                    self.1 $operand other,
-                    self.2 $operand other
+                    self.x $operand other,
+                    self.y $operand other,
+                    self.z $operand other
                 )
             }
         }
@@ -110,9 +201,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$A>;
             fn $fun(self, other: &Self) -> Self::Output {
                 Vec3d::<$A>::new(
-                    self.0 $operand other.0,
-                    self.1 $operand other.1,
-                    self.2 $operand other.2
+                    self.x $operand other.x,
+                    self.y $operand other.y,
+                    self.z $operand other.z
                 )
             }
         }
@@ -121,9 +212,9 @@ macro_rules! implement_part {
             type Output = Self;
             fn $fun(self, other: &$A) -> Self::Output {
                 Vec3d::new(
-                    self.0 $operand other,
-                    self.1 $operand other,
-                    self.2 $operand other
+                    self.x $operand other,
+                    self.y $operand other,
+                    self.z $operand other
                 )
             }
         }
@@ -132,9 +223,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$A>;
             fn $fun(self, other: &'a Vec3d<$A>) -> Self::Output {
                 Vec3d::<$A>::new(
-                    self.0 $operand other.0,
-                    self.1 $operand other.1,
-                    self.2 $operand other.2
+                    self.x $operand other.x,
+                    self.y $operand other.y,
+                    self.z $operand other.z
                 )
             }
         }
@@ -143,9 +234,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$A>;
             fn $fun(self, other: &'a $A) -> Self::Output {
                 Vec3d::<$A>::new(
-                    self.0 $operand other,
-                    self.1 $operand other,
-                    self.2 $operand other
+                    self.x $operand other,
+                    self.y $operand other,
+                    self.z $operand other
                 )
             }
         }
@@ -153,33 +244,33 @@ macro_rules! implement_part {
     (assign $A:ty, $Trait:ident, $fun:ident, $operand:tt) => {
         impl $Trait for Vec3d<$A> {
             fn $fun(&mut self, other: Self) {
-                self.0 $operand other.0;
-                self.1 $operand other.1;
-                self.2 $operand other.2;
+                self.x $operand other.x;
+                self.y $operand other.y;
+                self.z $operand other.z;
             }
         }
 
         impl $Trait<$A> for Vec3d<$A> {
             fn $fun(&mut self, other: $A) {
-                self.0 $operand other;
-                self.1 $operand other;
-                self.2 $operand other;
+                self.x $operand other;
+                self.y $operand other;
+                self.z $operand other;
             }
         }
 
         impl<'a> $Trait<&'a Vec3d<$A>> for Vec3d<$A> {
             fn $fun(&mut self, other: &Self) {
-                self.0 $operand other.0;
-                self.1 $operand other.1;
-                self.2 $operand other.2;
+                self.x $operand other.x;
+                self.y $operand other.y;
+                self.z $operand other.z;
             }
         }
 
         impl<'a> $Trait<&'a $A> for Vec3d<$A> {
             fn $fun(&mut self, other: &$A) {
-                self.0 $operand other;
-                self.1 $operand other;
-                self.2 $operand other;
+                self.x $operand other;
+                self.y $operand other;
+                self.z $operand other;
             }
         }
     };
@@ -210,9 +301,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$Output>;
             fn positive_rem(self, with: $Input) -> Self::Output {
                 Vec3d::new(
-                    self.0.positive_rem(with),
-                    self.1.positive_rem(with),
-                    self.2.positive_rem(with)
+                    self.x.positive_rem(with),
+                    self.y.positive_rem(with),
+                    self.z.positive_rem(with)
                 )
             }
         }
@@ -220,9 +311,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$Output>;
             fn positive_rem(self, with: $Input) -> Self::Output {
                 Vec3d::new(
-                    self.0.positive_rem(with),
-                    self.1.positive_rem(with),
-                    self.2.positive_rem(with)
+                    self.x.positive_rem(with),
+                    self.y.positive_rem(with),
+                    self.z.positive_rem(with)
                 )
             }
         }
@@ -230,9 +321,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$Output>;
             fn positive_rem(self, with: Vec3d<$Input>) -> Self::Output {
                 Vec3d::new(
-                    self.0.positive_rem(with.0),
-                    self.1.positive_rem(with.1),
-                    self.2.positive_rem(with.2)
+                    self.x.positive_rem(with.x),
+                    self.y.positive_rem(with.y),
+                    self.z.positive_rem(with.z)
                 )
             }
         }
@@ -240,9 +331,9 @@ macro_rules! implement_part {
             type Output = Vec3d<$Output>;
             fn positive_rem(self, with: Vec3d<$Input>) -> Self::Output {
                 Vec3d::new(
-                    self.0.positive_rem(with.0),
-                    self.1.positive_rem(with.1),
-                    self.2.positive_rem(with.2)
+                    self.x.positive_rem(with.x),
+                    self.y.positive_rem(with.y),
+                    self.z.positive_rem(with.z)
                 )
             }
         }
@@ -272,7 +363,7 @@ macro_rules! implement_traits {
             /// This method is more efficient when comparing
             /// lengths
             pub fn len_squared(&self) -> $A {
-                self.0*self.0 + self.1*self.1 + self.2*self.2
+                self.x*self.x + self.y*self.y + self.z*self.z
             }
 
             /// Returns the squared distance of this `Vec3d`
@@ -347,6 +438,7 @@ pub trait Normalize: Sized {
     fn normalize(self) -> Self;
     /// Normalizes this `Vec3d`, so that its length is equal to 1
     fn normalize_assign(&mut self);
+    fn is_normalized(&self) -> bool;
 }
 
 macro_rules! implement_normalize {
@@ -358,6 +450,9 @@ macro_rules! implement_normalize {
             }
             fn normalize_assign(&mut self) {
                 *self /= Length::<$A>::len(self);
+            }
+            fn is_normalized(&self) -> bool {
+                Length::<$A>::len(self) == 1.0
             }
         }
     };

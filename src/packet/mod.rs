@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 extern crate colorful;
 
@@ -170,14 +171,27 @@ impl PlayerConnectionPacketHandle {
     {
         let mut buffer: Vec<u8> = Vec::new();
         packet.consume_write(&mut buffer)?;
-        if let Err(e) = self
-            .sender_channel
+        self.sender_channel
             .send(PacketSenderMessage::Packet(P::ID, buffer))
             .await
-        {
-            return Err(format!("{}", e));
-        };
-        Ok(())
+            .map_err(|_| "Failed to send packet through sender channel".to_owned())
+    }
+    /// Sends a teleport packet and returns a result.
+    /// If the result is Ok, awaiting it will wait for
+    /// the client to respond to the packet. If the
+    /// result is then an error, the client did not
+    /// respond correctly and the connection will be
+    /// terminated.
+    pub async fn send_teleport_packet(
+        &mut self,
+        packet: play::send::PlayerPositionAndLook,
+    ) -> Result<impl std::future::Future<Output = Result<(), ()>>, &'static str> {
+        let (send, recv) = oneshot::channel();
+        self.handler_channel
+            .send(PacketHandlerMessage::SendTeleport(packet, send))
+            .await
+            .map_err(|_| "Failed to send packet through sender channel")?;
+        Ok(async { recv.await.map_err(|_| ()) })
     }
     pub async fn close_channel(&mut self) -> Result<(), SendError<PacketHandlerMessage>> {
         self.handler_channel

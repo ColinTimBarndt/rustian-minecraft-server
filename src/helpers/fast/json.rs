@@ -35,6 +35,27 @@ pub struct NamedValue {
   pub value: Eval<JsonValue>,
 }
 
+#[inline]
+/// Writes a string slice into a byte buffer, escaping it properly
+pub fn escape_write(text: &str, buffer: &mut Vec<u8>) {
+  let len = text.len();
+  // Reserve an approximated amount
+  buffer.reserve(len + (len >> 3));
+  for c in text.chars() {
+    match c {
+      '\\' => buffer.extend_from_slice(b"\\\\"),
+      '"' => buffer.extend_from_slice(b"\\\""),
+      '\n' => buffer.extend_from_slice(b"\\n"),
+      '\r' => buffer.extend_from_slice(b"\\r"),
+      c => {
+        let mut buf = [0u8; 4];
+        let s = c.encode_utf8(&mut buf);
+        buffer.extend_from_slice(s.as_bytes());
+      }
+    }
+  }
+}
+
 impl JsonString {
   pub fn into_literal(self) -> String {
     let escaped: Vec<String> = self.as_ref().chars().map(escape).collect();

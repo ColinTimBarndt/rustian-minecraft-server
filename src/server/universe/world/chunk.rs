@@ -40,26 +40,24 @@ impl Chunk {
     }
   }
   pub fn get_block_at_pos(&self, offset: Vec3d<u8>) -> Block {
-    let y_index = (offset.get_y() >> 4) as usize;
+    let y_index = (offset.y >> 4) as usize;
     let section = &self.sections[y_index];
     match section {
-      Some(section) => {
-        section.get_block_at_pos(offset.get_x(), offset.get_y() % 16, offset.get_z())
-      }
+      Some(section) => section.get_block_at_pos(offset.x, offset.y % 16, offset.z),
       None => Block::Air,
     }
   }
   pub fn set_block_at_pos(&mut self, offset: Vec3d<u8>, block: Block) {
-    let y_index = (offset.get_y() >> 4) as usize;
+    let y_index = (offset.y >> 4) as usize;
     let section = &mut self.sections[y_index];
     if let Some(section) = section.as_mut() {
-      section.set_block_at_pos(offset.get_x(), offset.get_y() % 16, offset.get_z(), block);
+      section.set_block_at_pos(offset.x, offset.y % 16, offset.z, block);
       if section.is_empty() {
         self.sections[y_index] = None;
       }
     } else {
       let mut section = ChunkSection::default();
-      section.set_block_at_pos(offset.get_x(), offset.get_y() % 16, offset.get_z(), block);
+      section.set_block_at_pos(offset.x, offset.y % 16, offset.z, block);
       self.sections[y_index] = Some(section);
     }
   }
@@ -118,8 +116,16 @@ impl ChunkPosition {
 impl From<Vec3d<i32>> for ChunkPosition {
   fn from(from: Vec3d<i32>) -> ChunkPosition {
     ChunkPosition {
-      x: (*from.get_x_as_ref()) >> 4,
-      z: (*from.get_z_as_ref()) >> 4,
+      x: (from.x) >> 4,
+      z: (from.z) >> 4,
+    }
+  }
+}
+impl From<Vec3d<f64>> for ChunkPosition {
+  fn from(from: Vec3d<f64>) -> ChunkPosition {
+    ChunkPosition {
+      x: (from.x / 16.0) as i32,
+      z: (from.z / 16.0) as i32,
     }
   }
 }

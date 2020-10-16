@@ -19,6 +19,9 @@ pub use player_abilities::*;
 mod player_info;
 pub use player_info::*;
 
+mod player_position_and_look;
+pub use player_position_and_look::*;
+
 mod unload_chunk;
 pub use unload_chunk::*;
 
@@ -45,3 +48,6 @@ pub use declare_commands::*;
 
 pub mod unlock_recipes;
 pub use unlock_recipes::UnlockRecipes;
+
+mod update_view_position;
+pub use update_view_position::*;

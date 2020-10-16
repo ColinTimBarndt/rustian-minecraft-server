@@ -1,8 +1,9 @@
 use crate::helpers::mojang_api;
 use crate::packet::{
-    PacketHandlerMessage, PacketParsingError, PacketReceiver, PacketSerialIn, PlayerConnectionState,
+    LoggingInState, PacketHandlerMessage, PacketParsingError, PacketReceiver, PacketSerialIn,
+    PlayerConnectionState,
 };
-use crate::server::universe::entity::EntityActorHandle;
+use crate::server::universe::entity::player::EntityPlayer;
 use std::error::Error;
 
 pub mod receive;
@@ -69,6 +70,7 @@ pub async fn handle(
             //println!("\nVerify Token correct: {}", correct_token);
             if correct_token {
                 let user_name = receiver.login_name.as_ref().unwrap().clone();
+                receiver.logging_in = LoggingInState::LoggingIn;
                 // Get User from Mojang API
                 let profile = match mojang_api::has_joined(
                     "",
@@ -127,7 +129,7 @@ pub async fn handle(
                         receiver
                             .send_packet(send::Disconnect::from(
                                 &ChatComponent::new(ChatComponentType::Translate {
-                                    key: "disconnect.loginFailedInfo.serversUnavailable".into(),
+                                    key: "disconnect.serversUnavailable".into(),
                                     with: vec![],
                                 })
                                 .set_color(ChatColor::Red),
@@ -147,28 +149,6 @@ pub async fn handle(
                     username: user_name.clone(),
                 };
                 println!("Profile: {:#?}", profile);
-                // TODO: Create a unique EID
-                let mut player = {
-                    let (send, recv) = tokio::sync::oneshot::channel();
-                    receiver
-                        .handler_channel
-                        .send(super::PacketHandlerMessage::GetServer(send))
-                        .await?;
-                    let mut server = recv.await?;
-                    let mut universe = server.get_universe(user_uuid.clone()).await?;
-                    let mut world = universe
-                        .join_world(user_uuid.clone())
-                        .await
-                        .map_err(|_| "Failed to join a world")?;
-                    world
-                        .spawn_entity_player_online(
-                            receiver.create_player_connection_handle(),
-                            profile,
-                        )
-                        .await
-                        .map_err(|_| "Failed to spawn player")?
-                };
-                receiver.player = Some(player.clone());
                 receiver.login_name = None;
                 receiver.set_encryption(shared_secret).await?;
                 receiver.send_packet(answer).await?;
@@ -183,8 +163,24 @@ pub async fn handle(
                     world::{Dimension::*, LevelType::*},
                     Gamemode::*,
                 };
+                let (send, recv) = tokio::sync::oneshot::channel();
+                receiver
+                    .handler_channel
+                    .send(super::PacketHandlerMessage::GetServer(send))
+                    .await?;
+                let mut server = recv.await?;
+                let mut universe = server.get_universe(user_uuid.clone()).await?;
+                let entity_player = {
+                    let eid = universe
+                        .reserve_entity_id()
+                        .await
+                        .map_err(|_| "Failed to reserve entity id")?;
+                    EntityPlayer::new(eid, profile)
+                };
+
+                // TODO: Send information about the actual world
                 let join_game_packet = JoinGame {
-                    entity_id: player.get_id(),
+                    entity_id: entity_player.id,
                     gamemode: Creative,
                     dimension: Overworld,
                     seed_hash: 0,
@@ -193,20 +189,27 @@ pub async fn handle(
                     reduced_debug_info: false,
                     show_respawn_screen: true,
                 };
+                receiver.intermediate_player = Some(Box::new(entity_player));
+                // ✅ Join Game
                 receiver.send_packet(join_game_packet).await?;
                 use crate::helpers::NamespacedKey;
+                // ✅ Plugin Message (brand)
                 receiver
                     .send_packet(super::play::send::PluginMessage {
                         channel: NamespacedKey::new("minecraft", "brand"),
                         data: b"rustian",
                     })
                     .await?;
+                // ✅ Difficulty
                 receiver
                     .send_packet(super::play::send::Difficulty {
                         difficulty: crate::server::universe::world::Difficulty::Hard,
                         locked: false,
                     })
                     .await?;
+                receiver.universe = Some(universe);
+                receiver.logging_in = LoggingInState::AwaitClientSettings;
+                // ✅ Player Abilities
                 receiver
                     .send_packet(super::play::send::PlayerAbilities {
                         ..std::default::Default::default()

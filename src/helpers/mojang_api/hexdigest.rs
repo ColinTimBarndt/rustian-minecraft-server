@@ -60,6 +60,7 @@ fn two_complement(bytes: &mut Vec<u8>) {
 }
 
 mod tests {
+  #![allow(unused_imports)]
   use super::calc_hash;
   #[test]
   pub fn test_calc_hashes() {

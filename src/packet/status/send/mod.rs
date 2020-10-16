@@ -1,12 +1,15 @@
+use crate::helpers::chat_components::ChatComponent;
 use crate::packet::{data::write, PacketSerialOut};
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct Response {
-    pub status: ServerStatus,
+/// # Response (Server List Ping)
+/// [Documentation](https://wiki.vg/Server_List_Ping)
+pub struct Response<'a> {
+    pub status: ServerStatus<'a>,
 }
 
-impl Response {
+impl Response<'_> {
     pub fn new() -> Self {
         Self {
             status: ServerStatus::new(),
@@ -15,34 +18,31 @@ impl Response {
 }
 
 #[derive(Debug)]
-pub struct ServerStatus {
+pub struct ServerStatus<'a> {
     pub version_name: &'static str,
     pub protocol_version: u32,
     pub max_players: u32,
     pub online_players: u32,
-    pub sample: Vec<(String, Uuid)>,
-    pub description: String,
-    pub favicon: Option<String>,
+    pub sample: &'a [(&'a str, Uuid)],
+    pub description: &'a [ChatComponent],
+    pub favicon: Option<&'a str>,
 }
 
-impl ServerStatus {
+impl ServerStatus<'_> {
     pub fn new() -> Self {
         Self {
             version_name: "1.15.2",
             protocol_version: 578,
             max_players: 20,
             online_players: 0,
-            sample: Vec::new(),
-            description: format!(
-                "{0}A {1}Rust{0}ian Minecraft server",
-                "\u{00A7}7", "\u{00A7}c"
-            ),
+            sample: &[],
+            description: &[],
             favicon: None,
         }
     }
 
     /// Creates a json string with the given information
-    pub fn to_json(&self) -> String {
+    pub fn make_json(&self) -> serde_json::Value {
         use serde_json::{Map, Value};
         let mut obj = json::ServerStatusRoot {
             version: json::ServerStatusVersion {
@@ -56,21 +56,77 @@ impl ServerStatus {
                     .sample
                     .iter()
                     .map(|(name, uuid)| json::ServerStatusPlayersSample {
-                        name: name.clone(),
+                        name: name.to_string(),
                         id: uuid.to_hyphenated().to_string(),
                     })
                     .collect(),
             },
-            description: json::ServerStatusDescription {
-                text: self.description.clone(),
-            },
+            description: Value::Array(
+                self.description
+                    .iter()
+                    .map(|comp| comp.make_json())
+                    .collect(),
+            ),
             other: Map::with_capacity(1),
         };
-        if let Some(favicon) = &self.favicon {
+        if let Some(favicon) = self.favicon {
             obj.other
-                .insert("favicon".to_owned(), Value::String(favicon.clone()));
+                .insert("favicon".to_owned(), Value::String(favicon.to_owned()));
         }
-        return serde_json::ser::to_string(&obj).unwrap();
+        return serde_json::to_value(&obj).unwrap();
+    }
+    /// Function optimized for serialiting a server status to
+    /// a buffer by minimizing memory allocation.
+    pub fn serialize_json(&self, buffer: &mut Vec<u8>) {
+        use crate::helpers::fast::json::escape_write;
+        buffer.extend_from_slice(br#"{"version":{"name":""#);
+        escape_write(self.version_name, buffer);
+        buffer.extend_from_slice(br#"","protocol":"#);
+        buffer.extend(self.protocol_version.to_string().as_bytes());
+        buffer.extend_from_slice(br#"},"players":{"max":"#);
+        buffer.extend(self.max_players.to_string().as_bytes());
+        buffer.extend_from_slice(br#","online":"#);
+        buffer.extend(self.online_players.to_string().as_bytes());
+        buffer.extend_from_slice(br#","sample":["#);
+        {
+            let mut iter = self.sample.iter();
+            if let Some(i) = iter.next() {
+                serialize_sample(&i.0, &i.1, buffer);
+                for i in iter {
+                    buffer.push(b',');
+                    serialize_sample(&i.0, &i.1, buffer);
+                }
+            }
+            #[inline]
+            fn serialize_sample(name: &str, uuid: &Uuid, buffer: &mut Vec<u8>) {
+                buffer.extend_from_slice(br#"{"name":""#);
+                escape_write(name, buffer);
+                buffer.extend_from_slice(br#"","id":""#);
+                escape_write(&uuid.to_hyphenated().to_string(), buffer);
+                buffer.extend_from_slice(br#""}"#);
+            }
+        }
+        buffer.extend_from_slice(br#"]},"description":"#);
+        if self.description.len() != 1 {
+            buffer.push(b'[');
+            let mut iter = self.description.iter();
+            if let Some(i) = iter.next() {
+                i.serialize_json(buffer);
+                for i in iter {
+                    buffer.push(b',');
+                    i.serialize_json(buffer);
+                }
+            }
+            buffer.push(b']');
+        } else {
+            self.description[0].serialize_json(buffer);
+        }
+        if let Some(favicon) = self.favicon {
+            buffer.extend_from_slice(br#","favicon":"data:image/png;base64,"#);
+            buffer.extend_from_slice(favicon.as_bytes());
+            buffer.push(b'"');
+        }
+        buffer.push(b'}');
     }
 }
 
@@ -81,7 +137,7 @@ mod json {
     pub struct ServerStatusRoot {
         pub version: ServerStatusVersion,
         pub players: ServerStatusPlayers,
-        pub description: ServerStatusDescription,
+        pub description: serde_json::Value,
         #[serde(flatten)]
         pub other: Map<String, Value>,
     }
@@ -122,12 +178,12 @@ impl Pong {
     }
 }
 
-impl PacketSerialOut for Response {
+impl PacketSerialOut for Response<'_> {
     const ID: u32 = 0x00;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
-        let json_string = self.status.to_json();
-        write::string(buffer, &json_string);
-        println!("Status JSON: {:#?}", json_string);
+        let mut json_string = Vec::with_capacity(200);
+        self.status.serialize_json(&mut json_string);
+        write::raw(buffer, &json_string);
         Ok(())
     }
 }

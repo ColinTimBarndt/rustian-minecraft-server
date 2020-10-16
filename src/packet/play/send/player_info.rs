@@ -3,21 +3,21 @@ use crate::packet::{data::write, PacketSerialOut};
 use crate::server::universe::entity::player::game_profile::{GameProfile, GameProfileProperty};
 use crate::server::universe::Gamemode;
 
-#[derive(Debug)]
-pub enum PlayerInfo<'a, 'b> {
-  AddPlayer(Vec<PlayerInfoAddPlayerEntry<'a, 'b>>),
-  UpdateGamemode(Vec<(uuid::Uuid, Gamemode)>),
-  UpdateLatency(Vec<(uuid::Uuid, i32)>),
-  UpdateDisplayName(Vec<(uuid::Uuid, Option<&'b [ChatComponent]>)>),
-  RemovePlayer(Vec<uuid::Uuid>),
-}
-
 /// # Player Info
 /// [Documentation](https://wiki.vg/Protocol#Player_Info)
 ///
 /// Sent by the server to update the user list (<tab> in the client).
 #[derive(Debug)]
-pub struct PlayerInfoAddPlayerEntry<'a, 'b> {
+pub enum PlayerInfo<'a> {
+  AddPlayer(&'a [PlayerInfoAddPlayerEntry<'a>]),
+  UpdateGamemode(&'a [(uuid::Uuid, Gamemode)]),
+  UpdateLatency(&'a [(uuid::Uuid, i32)]),
+  UpdateDisplayName(&'a [(uuid::Uuid, Option<&'a [ChatComponent]>)]),
+  RemovePlayer(&'a [uuid::Uuid]),
+}
+
+#[derive(Debug)]
+pub struct PlayerInfoAddPlayerEntry<'a> {
   pub profile: &'a GameProfile,
   pub gamemode: Gamemode,
   /// Ping in ms. Corresponds to a connection icon on the client side:
@@ -28,10 +28,10 @@ pub struct PlayerInfoAddPlayerEntry<'a, 'b> {
   /// - A ping under 1000 milliseconds (1 second) will result in 2 bars
   /// - A ping greater than or equal to 1 second will result in 1 bar.
   pub ping: i32,
-  pub display_name: Option<&'b [ChatComponent]>,
+  pub display_name: Option<&'a [ChatComponent]>,
 }
 
-impl PacketSerialOut for PlayerInfo<'_, '_> {
+impl PacketSerialOut for PlayerInfo<'_> {
   const ID: u32 = 0x34;
 
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
@@ -39,7 +39,7 @@ impl PacketSerialOut for PlayerInfo<'_, '_> {
       Self::AddPlayer(entries) => {
         write::var_u8(buffer, 0);
         write::var_usize(buffer, entries.len());
-        for entry in entries {
+        for entry in *entries {
           write::uuid(buffer, entry.profile.uuid);
           write::string(buffer, &entry.profile.name);
           // Properties
@@ -67,7 +67,7 @@ impl PacketSerialOut for PlayerInfo<'_, '_> {
       Self::UpdateGamemode(entries) => {
         write::var_u8(buffer, 1);
         write::var_usize(buffer, entries.len());
-        for (uuid, gamemode) in entries {
+        for (uuid, gamemode) in *entries {
           write::uuid(buffer, *uuid);
           write::var_u8(buffer, *gamemode as u8);
         }
@@ -75,7 +75,7 @@ impl PacketSerialOut for PlayerInfo<'_, '_> {
       Self::UpdateLatency(entries) => {
         write::var_u8(buffer, 2);
         write::var_usize(buffer, entries.len());
-        for (uuid, ping) in entries {
+        for (uuid, ping) in *entries {
           write::uuid(buffer, *uuid);
           write::var_i32(buffer, *ping);
         }
@@ -83,7 +83,7 @@ impl PacketSerialOut for PlayerInfo<'_, '_> {
       Self::UpdateDisplayName(entries) => {
         write::var_u8(buffer, 3);
         write::var_usize(buffer, entries.len());
-        for (uuid, display_name) in entries {
+        for (uuid, display_name) in *entries {
           write::uuid(buffer, *uuid);
           if let Some(display_name) = display_name {
             write::bool(buffer, true);
@@ -96,7 +96,7 @@ impl PacketSerialOut for PlayerInfo<'_, '_> {
       Self::RemovePlayer(entries) => {
         write::var_u8(buffer, 4);
         write::var_usize(buffer, entries.len());
-        for uuid in entries {
+        for uuid in *entries {
           write::uuid(buffer, *uuid);
         }
       }

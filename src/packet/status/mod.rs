@@ -1,3 +1,4 @@
+use crate::helpers::chat_components::{ChatColor, ChatComponent};
 use crate::packet::{
     packet_handler::PacketParsingError, PacketHandlerMessage, PacketReceiver, PacketSerialIn,
 };
@@ -22,7 +23,15 @@ pub async fn handle(
             {
                 //println!("Client requested the server status");
             }
-            let answer = Response::new();
+            let mut answer = Response::new();
+            let description = [
+                ChatComponent::text("A ").set_color(ChatColor::Gray),
+                ChatComponent::text("Rust").set_color(ChatColor::Red),
+                ChatComponent::text("ian Minecraft server").set_color(ChatColor::Gray),
+            ];
+            let sample = [("Hello", uuid::Uuid::nil()), ("World!", uuid::Uuid::nil())];
+            answer.status.description = &description;
+            answer.status.sample = &sample;
             receiver.send_packet(answer).await?;
             Ok(())
         }

@@ -1,7 +1,7 @@
 use crate::actor_model::Actor;
 use crate::server::registries::EntityType;
 use crate::server::universe::entity::player::online_controller::Controller as OnlinePlayer;
-use crate::server::universe::entity::{Entity, EntityActorHandle};
+use crate::server::universe::entity::EntityActorHandle;
 use std::collections::HashMap;
 use tokio::task::JoinHandle;
 

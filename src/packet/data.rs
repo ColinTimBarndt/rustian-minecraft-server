@@ -1,3 +1,25 @@
+use crate::packet::PacketParsingError;
+
+pub fn finite_f32(f: f32) -> Result<f32, PacketParsingError> {
+    if f.is_finite() {
+        Ok(f)
+    } else {
+        Err(PacketParsingError::InvalidPacket(
+            "unexpected non-finite floating point value".to_owned(),
+        ))
+    }
+}
+
+pub fn finite_f64(f: f64) -> Result<f64, PacketParsingError> {
+    if f.is_finite() {
+        Ok(f)
+    } else {
+        Err(PacketParsingError::InvalidPacket(
+            "unexpected non-finite position".to_owned(),
+        ))
+    }
+}
+
 /// Read data from raw packet bytes
 ///
 /// Note: Numbers use the network byte order (big endian)
@@ -248,6 +270,10 @@ pub mod write {
         u64(buffer, n.to_bits());
     }
 
+    pub fn raw(buffer: &mut Vec<u8>, raw: &[u8]) {
+        var_usize(buffer, raw.len());
+        buffer.extend(raw);
+    }
     pub fn string(buffer: &mut Vec<u8>, s: impl AsRef<str>) {
         let bytes = s.as_ref().as_bytes();
         var_usize(buffer, bytes.len());
@@ -362,13 +388,13 @@ pub mod write {
     ///
     /// [Documentation](https://wiki.vg/Protocol#Position)
     pub fn block_position(buffer: &mut Vec<u8>, pos: &Vec3d<i32>) {
-        let x = pos.get_x();
+        let x = pos.x;
         assert!(x >= -33554432, "X must be >= -33554432");
         assert!(x < 33554431, "X must be < 33554431");
-        let z = pos.get_z();
+        let z = pos.z;
         assert!(z >= -33554432, "X must be >= -33554432");
         assert!(z < 33554431, "X must be < 33554431");
-        let y = pos.get_y();
+        let y = pos.y;
         assert!(y >= -2048, "Y must be >= -2048");
         assert!(y < 2048, "Y must be < 2048");
 
@@ -408,9 +434,9 @@ mod tests {
         write::block_position(&mut buffer, &pos);
         let mut buf_slice = &buffer[..];
         let decoded: Vec3d<i32> = read::block_position(&mut buf_slice).unwrap();
-        assert_eq!(pos.get_x(), decoded.get_x(), "ne x");
-        assert_eq!(pos.get_y(), decoded.get_y(), "ne y");
-        assert_eq!(pos.get_z(), decoded.get_z(), "ne z");
+        assert_eq!(pos.x, decoded.x, "ne x");
+        assert_eq!(pos.y, decoded.y, "ne y");
+        assert_eq!(pos.z, decoded.z, "ne z");
     }
 
     #[test]

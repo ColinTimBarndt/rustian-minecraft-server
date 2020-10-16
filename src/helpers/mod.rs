@@ -5,14 +5,17 @@ mod color;
 mod namespaced_key;
 mod nibble_array;
 mod registry;
-mod vector;
+mod rotation;
+pub mod vector;
+
 pub use bit_array::*;
 pub use chunk_send_order::*;
 pub use color::*;
 pub use namespaced_key::*;
 pub use nibble_array::*;
 pub use registry::*;
-pub use vector::*;
+pub use rotation::*;
+pub use vector::Vec3d;
 pub mod fast;
 pub mod mojang_api;
 
