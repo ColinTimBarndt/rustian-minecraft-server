@@ -1,13 +1,12 @@
 use super::data;
-use openssl::symm::*;
-use std::error::Error;
-use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc::{Receiver, Sender};
-extern crate colorful;
 use colorful::Color;
 use colorful::Colorful;
+use openssl::symm::*;
+use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
+use tokio::io::Error as IoError;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 // use tokio::net::tcp::WriteHalf;
 // type Writer = WriteHalf<'static>;
@@ -26,7 +25,7 @@ pub enum PacketSenderMessage {
     /// Tell the packet sender actor to send a packet
     Packet(u32, Vec<u8>),
     /// Tell the packet sender actor to send a packet
-    PacketBox(u32, Box<Vec<u8>>),
+    PacketArc(u32, Arc<Vec<u8>>),
     /// Tell the packet sender actor to send a packet
     /// The actor is going to wait for the broadcast
     /// to send the packet
@@ -65,7 +64,7 @@ impl PacketSender {
                             ),
                         }
                     }
-                    PacketBox(packet_id, raw_packet) => {
+                    PacketArc(packet_id, raw_packet) => {
                         match self.send(&*raw_packet, packet_id).await {
                             Ok(()) => (),
                             Err(e) => eprintln!(
@@ -101,7 +100,7 @@ impl PacketSender {
         }
     }
     /// Sends a packet
-    pub async fn send(&mut self, packet_data: &[u8], packet_id: u32) -> Result<(), Box<dyn Error>> {
+    pub async fn send(&mut self, packet_data: &[u8], packet_id: u32) -> Result<(), IoError> {
         let mut buffer = Vec::new();
         let mut body_buffer = Vec::with_capacity(packet_data.len() + 4);
 

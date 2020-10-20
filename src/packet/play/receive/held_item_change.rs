@@ -16,7 +16,13 @@ impl PacketSerialIn for HeldItemChange {
   fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     Ok(Self {
       hotbar_slot: match read::u16(buffer)?.try_into() {
-        Ok(slot) => slot,
+        Ok(slot) if slot <= 8 => slot,
+        Ok(slot) => {
+          return Err(PacketParsingError::InvalidPacket(format!(
+            "Invalid hotbar slot: {}",
+            slot
+          )))
+        }
         Err(e) => return Err(PacketParsingError::InvalidPacket(e.to_string())),
       },
     })

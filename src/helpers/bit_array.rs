@@ -127,6 +127,12 @@ impl From<BitArray> for Vec<u64> {
     }
 }
 
+impl AsRef<[u64]> for BitArray {
+    fn as_ref(&self) -> &[u64] {
+        &self.data
+    }
+}
+
 fn needed_bits(n: u64) -> u8 {
     (64 - n.leading_zeros()) as u8
 }

@@ -10,8 +10,22 @@ pub mod helpers;
 pub mod packet;
 pub mod server;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
+    use tokio::runtime;
+    let mut rt: runtime::Runtime = runtime::Builder::new()
+        .threaded_scheduler()
+        .max_threads(1024)
+        .thread_stack_size(4 * 1024 * 1024)
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap();
+    let future = rt.enter(|| tokio_main());
+    rt.block_on(future)?;
+    Ok(())
+}
+
+async fn tokio_main() -> Result<(), Box<dyn Error>> {
     use server::*;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     println!("Creating Server");

@@ -68,17 +68,23 @@ impl EntityLiving for EntityPlayer {
 pub mod online_controller {
   use super::*;
   use crate::packet::PlayerConnectionPacketHandle;
+  use crate::server::universe::world::{ChunkPosition, RegionHandle, WorldHandle};
   use async_trait::async_trait;
+  use std::collections::{HashMap, HashSet};
   use std::fmt;
 
   /// Actor that handles player behavior
   pub struct Controller {
     pub connection: PlayerConnectionPacketHandle,
     pub entity: EntityPlayer,
+    pub chunk_subscriptions: HashMap<ChunkPosition, RegionHandle>,
+    pub pending_chunk_subscriptions: HashSet<ChunkPosition>,
+    pub world: WorldHandle,
     handle: Option<<Controller as Actor>::Handle>,
   }
 
   /// Other messages this Actor can receive
+  #[derive(Debug)]
   pub enum ControllerMessage {
     /// Client updated settings
     UpdateSettings(PlayerSettings),
@@ -91,6 +97,10 @@ pub mod online_controller {
       rotation: Option<EulerAngle>,
       on_ground: bool,
     },
+    PrivateSubscribedChunk {
+      position: ChunkPosition,
+      handle: Option<RegionHandle>,
+    },
   }
 
   impl ControllerHandle {
@@ -99,6 +109,15 @@ pub mod online_controller {
     }
     pub fn get_uuid(&self) -> uuid::Uuid {
       self.final_properties.uuid.clone()
+    }
+    /// TODO: This may be changed later to let
+    /// the player entity switch universes
+    /// (allowing a change of the entity id)
+    pub fn get_entity_id(&self) -> u32 {
+      self.final_properties.eid
+    }
+    pub fn clone_connection_handle(&self) -> PlayerConnectionPacketHandle {
+      self.final_properties.connection.clone()
     }
     pub async fn update_settings(&mut self, settings: PlayerSettings) -> Result<(), ()> {
       self
@@ -113,7 +132,7 @@ pub mod online_controller {
       slot: u8,
       update_client: bool,
     ) -> Result<(), ()> {
-      assert!(slot <= 9, "Invalid slot id: {}", slot);
+      assert!(slot <= 8, "Invalid slot id: {}", slot);
       self
         .send_raw_message(ActorMessage::Other(
           ControllerMessage::SetSelectedHotbarSlot {
@@ -139,6 +158,18 @@ pub mod online_controller {
         .await
         .map_err(|_| ())
     }
+    async fn subscribed_chunk(
+      &mut self,
+      position: ChunkPosition,
+      handle: Option<RegionHandle>,
+    ) -> Result<(), ()> {
+      self
+        .send_raw_message(ActorMessage::Other(
+          ControllerMessage::PrivateSubscribedChunk { position, handle },
+        ))
+        .await
+        .map_err(|_| ())
+    }
   }
 
   /// Handle for communicating with this actor
@@ -146,26 +177,73 @@ pub mod online_controller {
     super::EntityActorHandleStruct<ControllerMessage, SharedControllerProperties>;
 
   impl Controller {
-    pub fn new(con: PlayerConnectionPacketHandle, entity: EntityPlayer) -> Self {
+    pub fn new(
+      con: PlayerConnectionPacketHandle,
+      entity: EntityPlayer,
+      world: WorldHandle,
+    ) -> Self {
       Self {
         connection: con,
         entity,
+        world,
         handle: None,
+        chunk_subscriptions: HashMap::new(),
+        pending_chunk_subscriptions: HashSet::new(),
       }
     }
 
     pub async fn set_selected_hotbar_slot(&mut self, slot: u8) -> Result<(), String> {
       let packet = crate::packet::play::send::HeldItemChange { hotbar_slot: slot };
-      let con = &mut self.connection;
-      con.send_packet(packet).await?;
+      self.connection.send_packet(packet).await?;
       self.entity.selected_hotbar_slot = slot;
+      Ok(())
+    }
+
+    pub async fn unsubscribe_all_chunks(&mut self) -> Result<(), ()> {
+      let id = self.entity.id;
+      let joins: Vec<_> = self
+        .chunk_subscriptions
+        .drain()
+        .map(|(pos, mut handle)| {
+          tokio::task::spawn(async move { handle.player_unsubscribe(pos, id).await })
+        })
+        .collect();
+      for jh in joins {
+        jh.await.map_err(|_| ())??;
+      }
+      Ok(())
+    }
+
+    pub async fn request_subscribe_chunk(
+      &mut self,
+      pos: ChunkPosition,
+      complete_chunk: bool,
+    ) -> Result<(), ()> {
+      if self.pending_chunk_subscriptions.contains(&pos) {
+        return Ok(());
+      }
+      let future = self
+        .world
+        .player_subscribe_chunk(pos, self.entity.id, self.connection.clone(), complete_chunk)
+        .await
+        .map_err(|_| ())?;
+      let mut player = self.clone_handle();
+      tokio::task::spawn(async move {
+        let _ = match future.await {
+          Ok(handle) => player.subscribed_chunk(pos, Some(handle)).await,
+          Err(_) => player.subscribed_chunk(pos, None).await,
+        };
+      });
       Ok(())
     }
   }
 
+  #[derive(Debug)]
   pub struct SharedControllerProperties {
     name: String,
     uuid: uuid::Uuid,
+    eid: u32,
+    connection: PlayerConnectionPacketHandle,
   }
 
   #[async_trait]
@@ -211,6 +289,20 @@ pub mod online_controller {
           }
           true
         }
+        ControllerMessage::PrivateSubscribedChunk { position, handle } => {
+          if self.pending_chunk_subscriptions.remove(&position) {
+            if let Some(handle) = handle {
+              self.chunk_subscriptions.insert(position, handle);
+              true
+            } else {
+              eprintln!("[player.rs] Failed to subscribe to chunk");
+              true
+            }
+          } else {
+            eprintln!("[player.rs] Unexpected chunk subscription");
+            false
+          }
+        }
       }
     }
 
@@ -224,6 +316,8 @@ pub mod online_controller {
         SharedControllerProperties {
           name: self.entity.profile.name.clone(),
           uuid: self.entity.profile.uuid.clone(),
+          eid: self.entity.id,
+          connection: self.connection.clone(),
         },
       )
     }

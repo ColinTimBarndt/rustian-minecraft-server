@@ -45,6 +45,12 @@ impl From<[u8; 2048]> for NibbleArray4096 {
   }
 }
 
+impl AsRef<[u8; 2048]> for NibbleArray4096 {
+  fn as_ref(&self) -> &[u8; 2048] {
+    &self.inner
+  }
+}
+
 impl IntoIterator for NibbleArray4096 {
   type Item = u8;
   type IntoIter = NibbleArray4096Iterator;

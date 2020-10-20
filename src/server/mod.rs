@@ -214,11 +214,14 @@ async fn create_universe() -> (JoinHandle<Universe>, UniverseHandle) {
         NamespacedKey::new(crate::helpers::MINECRAFT_NAMESPACE, universe::OVERWORLD_KEY);
     let universe = Universe::new(overworld_key.clone());
     let (jh, mut handle) = universe.spawn_actor();
-    let generator = chunk_generator::FlatWorldGenerator::new(vec![
-        (Block::Bedrock, 1),
-        (Block::Dirt, 3),
-        (Block::GrassBlock(blocks::GrassBlockData::default()), 1),
-    ]);
+    let generator = chunk_generator::FlatWorldGenerator::new(
+        &[
+            (Block::Bedrock, 1),
+            (Block::Dirt, 3),
+            (Block::GrassBlock(blocks::GrassBlockData::default()), 1),
+        ],
+        registries::Biome::BirchForest,
+    );
     handle
         .create_world(
             overworld_key,

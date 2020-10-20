@@ -9,8 +9,8 @@ pub struct UpdateViewPosition {
 impl PacketSerialOut for UpdateViewPosition {
   const ID: u32 = 0x41;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
-    write::var_i32(buffer, self.position.get_x());
-    write::var_i32(buffer, self.position.get_z());
+    write::var_i32(buffer, self.position.x);
+    write::var_i32(buffer, self.position.z);
     Ok(())
   }
 }

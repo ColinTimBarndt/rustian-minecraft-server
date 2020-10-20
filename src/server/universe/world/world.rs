@@ -1,17 +1,22 @@
 use super::chunk_generator::ChunkGenerator;
 use super::chunk_loader::ChunkLoader;
 use super::{entity_list::EntityListEntry, region::*, Block, EntityList};
+use super::{Chunk, ChunkPosition};
 use crate::actor_model::*;
 use crate::helpers::{NamespacedKey, Vec3d};
 use crate::packet::PlayerConnectionPacketHandle;
+use crate::server::universe::entity::player::online_controller::{
+  Controller as OnlinePlayer, ControllerHandle as OnlinePlayerHandle,
+};
 use crate::server::universe::{entity, UniverseHandle};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 
 pub struct BlockWorld {
-  regions: HashMap<RegionPosition, RegionHandle>,
+  regions: HashMap<RegionPosition, (JoinHandle<Region>, RegionHandle)>,
   loaded_chunks: HashSet<super::ChunkPosition>,
   handle: Option<<BlockWorld as Actor>::Handle>,
   pub id: NamespacedKey,
@@ -50,48 +55,71 @@ impl BlockWorld {
       return None;
     }
     let region_position: RegionPosition = pos.into();
-    let region = self.regions.get_mut(&region_position);
-    // Is the region of the chunk loaded?
-    if let Some(loaded_region) = region {
-      let chunk_loaded = self
-        .loaded_chunks
-        .contains(&super::ChunkPosition::from(pos));
-      // Is the chunk in the region loaded?
-      if !chunk_loaded {
-        // Load or generate the chunk
-        if load {
-          let chk_pos = super::ChunkPosition::from(pos);
-          let chunk = if let Some(loaded_chk) = self.loader.load_chunk(chk_pos) {
-            loaded_chk
-          } else {
-            self.generator.generate(chk_pos)
-          };
-          let block = chunk.get_block_at_pos(Vec3d::new(
-            (pos.x % 16) as u8,
-            pos.y as u8,
-            (pos.z % 16) as u8,
-          ));
-          loaded_region.set_chunk(chunk).await.unwrap();
-          self.loaded_chunks.insert(chk_pos);
-          Some(block)
-        } else {
-          None
+    let chunk_position: ChunkPosition = pos.into();
+    if self.loaded_chunks.contains(&chunk_position) {
+      let region = self.get_region_handle(region_position).unwrap();
+      match region
+        .get_block(Vec3d::new(
+          pos.x % super::CHUNK_BLOCK_WIDTH as i32,
+          pos.y,
+          pos.z % super::CHUNK_BLOCK_WIDTH as i32,
+        ))
+        .await
+      {
+        Ok(b) => b,
+        Err(_) => {
+          eprintln!("[world.rs] Unable to get block in region");
+          return None;
         }
-      } else {
-        loaded_region
-          .get_block(Vec3d::new(
-            pos.x % super::CHUNK_BLOCK_WIDTH as i32,
-            pos.y,
-            pos.z % super::CHUNK_BLOCK_WIDTH as i32,
-          ))
-          .await
-          .expect("Unable to get block in region")
-          .map(|b| Some(b))
-          .unwrap_or(None)
       }
     } else {
-      None
+      if load {
+        let block = self
+          .load_chunk(chunk_position, |chunk| {
+            chunk.get_block_at_pos(Vec3d::new(
+              (pos.x % 16) as u8,
+              pos.y as u8,
+              (pos.z % 16) as u8,
+            ))
+          })
+          .await;
+        Some(block)
+      } else {
+        None
+      }
     }
+  }
+
+  #[inline]
+  pub fn get_region_handle(&mut self, pos: RegionPosition) -> Option<&mut RegionHandle> {
+    self.regions.get_mut(&pos).map(|(_jh, handle)| handle)
+  }
+
+  /// Loads a chunk and (optionally) processes it
+  pub async fn load_chunk<T: Sized>(
+    &mut self,
+    pos: ChunkPosition,
+    modifier: impl FnOnce(&mut Chunk) -> T,
+  ) -> T {
+    let region_pos: RegionPosition = pos.into();
+    let mut chunk = if let Some(loaded_chk) = self.loader.load_chunk(pos) {
+      loaded_chk
+    } else {
+      self.generator.generate(pos)
+    };
+    let r = modifier(&mut chunk);
+    if let Some(region) = self.get_region_handle(region_pos) {
+      region.set_chunk(chunk).await.unwrap();
+      self.loaded_chunks.insert(pos);
+    } else {
+      let chunks = Box::new([None, None, None, None]);
+      let mut region_struct = Region::new(region_pos, chunks);
+      region_struct.set_chunk(chunk);
+      let (jh, handle) = region_struct.spawn_actor();
+      self.regions.insert(region_pos, (jh, handle));
+      self.loaded_chunks.insert(pos);
+    }
+    r
   }
 }
 
@@ -130,63 +158,128 @@ impl Actor for BlockWorld {
         let mut world = self.clone_handle();
         // Do this async because this thread has better things to do
         tokio::task::spawn(async move {
-          if let Err(e) = (async {
+          if let Err(e) = (async move {
+            use crate::packet::play::send::{PlayerPositionAndLook, UpdateViewPosition};
+            if generate_id {
+              if let Ok(id) = universe.reserve_entity_id().await {
+                entity.id = id;
+              } else {
+                return Err(format!(
+                  "[world.rs] Failed to reserve id for player entity {} ({})",
+                  entity.profile.name, entity.profile.uuid
+                ));
+              }
+            }
+            let entity_id = entity.id;
+            // Send these packets:
+            // - UpdateLight
+            // - ChunkData
+            // - WorldBorder
+            // - SpawnPosition
+            // - PlayerPositionAndLook
+
+            // ✅ UpdateViewPosition
+            connection
+              .send_packet(UpdateViewPosition {
+                position: super::ChunkPosition::from(entity.position),
+              })
+              .await?;
+
+            let mut controller =
+              entity::player::online_controller::Controller::new(connection, entity, world.clone());
+            // ✅ UpdateLight
+            // ✅ ChunkData
             {
-              use crate::packet::play::send::{
-                ChunkData, PlayerPositionAndLook, UpdateViewPosition,
-              };
-              if generate_id {
-                if let Ok(id) = universe.reserve_entity_id().await {
-                  entity.id = id;
-                } else {
-                  return Err(format!(
-                    "[world.rs] Failed to reserve id for player entity {} ({})",
-                    entity.profile.name, entity.profile.uuid
-                  ));
+              // The client expects to receive 7*7 chunks around the player to
+              // be sent before spawning.
+              let radius: i32 = 3;
+              let chunks_total = ((radius * 2 + 1) * (radius * 2 + 1)) as usize;
+              let mut joins = Vec::with_capacity(chunks_total);
+              let player_chunk: ChunkPosition = controller.entity.position.into();
+              for x in player_chunk.x - radius..=player_chunk.x + radius {
+                for z in player_chunk.z - radius..=player_chunk.z + radius {
+                  let chunk_pos = ChunkPosition::new(x, z);
+                  let future = world
+                    .player_subscribe_chunk(
+                      chunk_pos,
+                      entity_id,
+                      controller.connection.clone(),
+                      // Send the full chunk
+                      true,
+                    )
+                    .await
+                    .map_err(|_| "Failed to send chunk subscription request")?;
+                  println!(
+                    "DEBUG sent subscription request {:?} {:?}",
+                    chunk_pos,
+                    RegionPosition::from(chunk_pos)
+                  );
+                  // Wait for the region to respond
+                  joins.push(tokio::task::spawn(async move {
+                    println!("Task spawned");
+                    match future.await {
+                      // Received a callback
+                      Ok(handle) => {
+                        println!("DEBUG Got callback! {:?}", chunk_pos);
+                        Ok((chunk_pos, handle))
+                      }
+                      Err(_) => {
+                        eprintln!("Got an error");
+                        Err("Failed to request subscription")
+                      }
+                    }
+                  }));
                 }
               }
-              // Send these packets:
-              // - UpdateViewPosition
-              // - UpdateLight
-              // - ChunkData
-              // - WorldBorder
-              // - SpawnPosition
-              // - PlayerPositionAndLook
-
-              // ✅ UpdateViewPosition
-              connection
-                .send_packet(UpdateViewPosition {
-                  position: super::ChunkPosition::from(entity.position),
-                })
-                .await?;
-
-              // TODO
-
-              // ✅ PlayerPositionAndLook
-              connection
-                .send_teleport_packet(PlayerPositionAndLook::create_abs(
-                  0,
-                  entity.position,
-                  entity.head_rotation,
-                ))
-                .await?
-                .await
-                .map_err(|_| "Failed to await teleport callback")?;
-
-              println!("Received teleport callback!!11!elf!");
-
-              // Then, spawn player actor
-              let controller =
-                entity::player::online_controller::Controller::new(connection, entity);
-              let (jh, handle) = controller.spawn_actor();
-              let cloned_handle = handle.clone();
-              world
-                .insert_entity_player_online((jh, handle))
-                .await
-                .expect("[world.rs] Failed to communicate with own world");
-              let _ = callback.send(cloned_handle);
-              Ok(())
+              // Wait until all chunks have been sent
+              println!("Waiting for callbacks...");
+              let mut i = 0;
+              for join in joins {
+                let (chunk_pos, handle) = join
+                  .await
+                  .map_err(|_| "Failed to load chunk (task panicked)")??;
+                i += 1;
+                println!("Callback {} / {}", i, chunks_total);
+                // Save the subscription so that the player can unsubscribe
+                // when the chunk gets out of viewing distance or a
+                // disconnect happens.
+                controller.chunk_subscriptions.insert(chunk_pos, handle);
+              }
             }
+
+            println!("Sending player position...");
+
+            // ✅ PlayerPositionAndLook
+            controller
+              .connection
+              .send_teleport_packet(PlayerPositionAndLook::create_abs(
+                0,
+                controller.entity.position,
+                controller.entity.head_rotation,
+              ))
+              .await?
+              .await
+              .map_err(|_| "Failed to await teleport callback")?;
+
+            println!("Received teleport callback!!11!elf!");
+            // Then, spawn player actor
+            let (jh, handle) = controller.spawn_actor();
+            let cloned_handle = handle.clone();
+            let mut cloned_world = world.clone();
+            world
+              .insert_entity_player_online((
+                tokio::task::spawn(async move {
+                  let controller = jh.await;
+                  let _ = cloned_world.entity_actor_stopped(entity_id).await;
+                  // This may panic. This is intended
+                  controller.unwrap()
+                }),
+                handle,
+              ))
+              .await
+              .expect("[world.rs] Failed to communicate with own world");
+            let _ = callback.send(cloned_handle);
+            Ok(())
           })
           .await
           {
@@ -199,6 +292,60 @@ impl Actor for BlockWorld {
       }
       WorldMessage::PrivateInsertEntityPlayerOnline(tuple) => {
         self.entities.insert(tuple);
+        true
+      }
+      WorldMessage::PrivateEntityActorStopped { id } => {
+        use crate::server::registries::EntityType;
+        match self.entities.get_type_of_entity(id) {
+          Some(EntityType::Player) => {
+            if EntityListEntry::<OnlinePlayer>::has(&self.entities, id) {
+              // Player
+              let (jh, _handle) = self.entities.remove(id).unwrap();
+              let result: Result<OnlinePlayer, _> = jh.await;
+              match result {
+                Ok(mut controller) => {
+                  // Attempt to close the connection if it is not already closed
+                  let _ = controller.connection.close_channel().await;
+                  // Try to unsubscribe from all chunks
+                  let _ = controller.unsubscribe_all_chunks().await;
+                }
+                Err(_) => {
+                  // Can't do anything in this case
+                } // TODO: Tell other online players to remove this player
+              }
+            } else {
+              // NPC
+            }
+          }
+          Some(_) => {
+            unimplemented!();
+            // TODO
+          }
+          // Stopping the actor was planned, the entity has already
+          // been removed from the list.
+          None => (),
+        }
+        true
+      }
+      WorldMessage::PlayerSubscribeChunk {
+        chunk,
+        player_id,
+        connection,
+        send_complete,
+        callback,
+      } => {
+        let region_pos: RegionPosition = chunk.into();
+        if !self.loaded_chunks.contains(&chunk) {
+          self.load_chunk(chunk, |_| ()).await;
+        }
+        let region = self.get_region_handle(region_pos).unwrap();
+        if let Err(_e) = region
+          .player_subscribe(chunk, player_id, connection, send_complete, callback)
+          .await
+        {
+          eprintln!("[world.rs] Failed to communicate with region");
+          return false;
+        }
         true
       }
     }
@@ -230,7 +377,19 @@ pub enum WorldMessage {
     generate_id: bool,
     callback: oneshot::Sender<entity::player::online_controller::ControllerHandle>,
   },
+  PlayerSubscribeChunk {
+    chunk: ChunkPosition,
+    player_id: u32,
+    connection: PlayerConnectionPacketHandle,
+    /// If the chunk should be sent as a complete
+    /// chunk first
+    send_complete: bool,
+    callback: oneshot::Sender<RegionHandle>,
+  },
   PrivateInsertEntityPlayerOnline(EntityPlayerOnlineHandleTuple),
+  PrivateEntityActorStopped {
+    id: u32,
+  },
 }
 
 type EntityPlayerOnlineHandleTuple = (
@@ -318,6 +477,47 @@ impl WorldHandle {
       ))
       .await
       .map_err(|_| ())
+  }
+  async fn entity_actor_stopped(&mut self, id: u32) -> Result<(), ()> {
+    self
+      .send_raw_message(ActorMessage::Other(
+        WorldMessage::PrivateEntityActorStopped { id },
+      ))
+      .await
+      .map_err(|_| ())
+  }
+  /// This is a two-step async function. The first future sends the request
+  /// and the second future awaits the response.
+  ///
+  /// This function should only be used internally by the online player actor.
+  /// Sending this message for a player actor will result in an invalid state
+  /// because the region thinks that the player is subscribed, but the player
+  /// is not aware of this. This means that if the player leaves, it does not
+  /// unsubscribe from the region.
+  pub async fn player_subscribe_chunk(
+    &mut self,
+    chunk: ChunkPosition,
+    player_id: u32,
+    connection: PlayerConnectionPacketHandle,
+    send_complete: bool,
+  ) -> Result<impl std::future::Future<Output = Result<RegionHandle, ()>>, ()> {
+    use futures::FutureExt;
+    let (send, recv) = oneshot::channel();
+    self
+      .send_raw_message(ActorMessage::Other(WorldMessage::PlayerSubscribeChunk {
+        chunk,
+        player_id,
+        connection,
+        send_complete,
+        callback: send,
+      }))
+      .await
+      .map_err(|_| ())?;
+    Ok(
+      recv
+        .inspect(|_r| println!("Direct callback"))
+        .map(|r| r.map_err(|_| ())),
+    )
   }
 }
 

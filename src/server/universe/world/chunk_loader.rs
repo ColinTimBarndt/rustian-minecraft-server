@@ -1,10 +1,11 @@
 use super::{Chunk, ChunkPosition};
 
+// TODO: Make loading async
 pub trait ChunkLoader: Send + 'static {
     /// Returns Some(Chunk) if the chunk could be loaded.
     /// If None is returned, then the chunk should be
     /// generated instead.
-    fn load_chunk(&mut self, pos: ChunkPosition) -> Option<Chunk>;
+    fn load_chunk(&mut self, pos: ChunkPosition) -> Option<Box<Chunk>>;
 }
 
 impl<T> From<Box<T>> for Box<dyn ChunkLoader>
@@ -26,7 +27,7 @@ impl VoidChunkLoader {
     }
 }
 impl ChunkLoader for VoidChunkLoader {
-    fn load_chunk(&mut self, _pos: ChunkPosition) -> Option<Chunk> {
+    fn load_chunk(&mut self, _pos: ChunkPosition) -> Option<Box<Chunk>> {
         None
     }
 }

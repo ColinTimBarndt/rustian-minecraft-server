@@ -49,5 +49,8 @@ pub use declare_commands::*;
 pub mod unlock_recipes;
 pub use unlock_recipes::UnlockRecipes;
 
+mod update_light;
+pub use update_light::*;
+
 mod update_view_position;
 pub use update_view_position::*;

@@ -28,6 +28,7 @@ where
   <T as Actor>::Handle: EntityActorHandle,
 {
   fn get(&self, id: u32) -> Option<&(JoinHandle<T>, T::Handle)>;
+  fn has(&self, id: u32) -> bool;
   fn get_mut(&mut self, id: u32) -> Option<&mut (JoinHandle<T>, T::Handle)>;
   fn insert(&mut self, handle: (JoinHandle<T>, T::Handle));
   fn remove(&mut self, id: u32) -> Option<(JoinHandle<T>, T::Handle)>;
@@ -38,6 +39,9 @@ macro_rules! register_entity {
     impl EntityListEntry<$ty> for EntityList {
       fn get(&self, id: u32) -> Option<&(JoinHandle<$ty>, <$ty as Actor>::Handle)> {
         self.$var.get(&id)
+      }
+      fn has(&self, id: u32) -> bool {
+        self.$var.contains_key(&id)
       }
       fn get_mut(&mut self, id: u32) -> Option<&mut (JoinHandle<$ty>, <$ty as Actor>::Handle)> {
         self.$var.get_mut(&id)

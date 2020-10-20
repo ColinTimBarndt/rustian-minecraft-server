@@ -13,8 +13,8 @@ pub struct UnloadChunk {
 impl PacketSerialOut for UnloadChunk {
   const ID: u32 = 0x1E;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
-    write::i32(buffer, self.chunk_position.get_x());
-    write::i32(buffer, self.chunk_position.get_z());
+    write::i32(buffer, self.chunk_position.x);
+    write::i32(buffer, self.chunk_position.z);
     Ok(())
   }
 }

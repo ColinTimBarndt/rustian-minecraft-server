@@ -226,7 +226,7 @@ pub async fn handle(
           let mut con_handle = receiver.create_player_connection_handle();
           tokio::spawn(async move {
             use tokio::time::{delay_for, Duration};
-            let delay = delay_for(Duration::new(10 /*sec*/, 0 /*nanosec*/));
+            let delay = delay_for(Duration::new(20 /*sec*/, 0 /*nanosec*/));
             delay.await;
             println!("[play/mod.rs] Kicking user");
             use crate::helpers::chat_components::{ChatColor, ChatComponent};

@@ -452,7 +452,7 @@ macro_rules! implement_normalize {
                 *self /= Length::<$A>::len(self);
             }
             fn is_normalized(&self) -> bool {
-                Length::<$A>::len(self) == 1.0
+                Length::<$A>::len(self).sub(1.0).abs() <= 0.001
             }
         }
     };

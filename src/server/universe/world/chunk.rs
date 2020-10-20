@@ -1,28 +1,43 @@
 // Based on: https://github.com/feather-rs/feather/blob/develop/core/src/chunk.rs
 
 use super::{blocks, Block};
-use crate::helpers::{BitArray, NibbleArray4096, Vec3d};
-use std::ops;
+use crate::helpers::{BitArray, NibbleArray4096, Registry, Vec3d};
+use crate::server::registries::Biome;
+use std::{fmt, ops};
 
 pub const CHUNK_BLOCK_WIDTH: u32 = 16;
 const COORDINATE_SCALE: i32 = CHUNK_BLOCK_WIDTH as i32;
 
 pub const LOCAL_PALETTE_BIT_LIMIT: u8 = 9;
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct Chunk {
   pub sections: [Option<ChunkSection>; 16],
-  position: ChunkPosition,
+  pub position: ChunkPosition,
+  pub sky_light: [LightSection; 18],
+  pub emitted_light: [LightSection; 18],
+  biomes: [u32; 1024],
 }
 
-impl std::fmt::Display for Chunk {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-    write!(
-      f,
-      "Chunk({}, {})",
-      self.position.get_x(),
-      self.position.get_z()
-    )
+#[derive(Clone, Copy)]
+pub enum LightSection {
+  None,
+  Zero,
+  Some(NibbleArray4096),
+}
+
+impl fmt::Debug for Chunk {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("Chunk")
+      .field("position", &self.position)
+      .field("sections", &self.sections)
+      .finish()
+  }
+}
+
+impl fmt::Display for Chunk {
+  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    write!(f, "Chunk({}, {})", self.position.x, self.position.z)
   }
 }
 
@@ -33,10 +48,11 @@ impl Chunk {
       ..Default::default()
     }
   }
-  pub fn copy(&self, to: ChunkPosition) -> Self {
+  pub fn duplicate(&self, to: ChunkPosition) -> Self {
     Self {
       sections: self.sections.clone(),
       position: to,
+      ..Default::default()
     }
   }
   pub fn get_block_at_pos(&self, offset: Vec3d<u8>) -> Block {
@@ -61,8 +77,24 @@ impl Chunk {
       self.sections[y_index] = Some(section);
     }
   }
-  pub fn get_position(&self) -> &ChunkPosition {
-    &self.position
+  /// Sets a biome at a specific biome volume. Each volume
+  /// has a size of 4*4*4 blocks. Each chunk section has 4
+  /// by 4 by 4 volumes.
+  pub fn set_biome_volume_at(&mut self, offset: Vec3d<u16>, biome: Biome) {
+    assert!((0..CHUNK_BLOCK_WIDTH as u16 / 4).contains(&offset.x));
+    assert!((0..256 / 4).contains(&offset.y));
+    assert!((0..CHUNK_BLOCK_WIDTH as u16 / 4).contains(&offset.z));
+    self.biomes[(offset.x + 4 * offset.z + 16 * offset.y) as usize] = biome.get_id() as u32;
+  }
+  pub fn get_biome_volume_at(&self, offset: Vec3d<u16>) -> Biome {
+    assert!((0..CHUNK_BLOCK_WIDTH as u16 / 4).contains(&offset.x));
+    assert!((0..256 / 4).contains(&offset.y));
+    assert!((0..CHUNK_BLOCK_WIDTH as u16 / 4).contains(&offset.z));
+    Biome::from_id(self.biomes[(offset.x + 4 * offset.z + 16 * offset.y) as usize] as usize)
+      .unwrap()
+  }
+  pub fn get_biome_data(&self) -> &[u32; 1024] {
+    &self.biomes
   }
 }
 
@@ -74,6 +106,9 @@ impl Default for Chunk {
         None,
       ],
       position: ChunkPosition::new(0, 0),
+      sky_light: [LightSection::None; 18],
+      emitted_light: [LightSection::None; 18],
+      biomes: [Biome::Plains.get_id() as u32; 1024],
     }
   }
 }
@@ -86,12 +121,6 @@ pub struct ChunkPosition {
 impl ChunkPosition {
   pub fn new(x: i32, z: i32) -> Self {
     Self { x, z }
-  }
-  pub fn get_x(&self) -> i32 {
-    self.x
-  }
-  pub fn get_z(&self) -> i32 {
-    self.z
   }
   pub fn get_offset(&self) -> Vec3d<i32> {
     Vec3d::new(self.x * COORDINATE_SCALE, 0, self.z * COORDINATE_SCALE)
@@ -210,8 +239,8 @@ impl std::cmp::PartialEq for ChunkPosition {
 
 #[derive(Clone)]
 pub struct ChunkSection {
-  sky_light: NibbleArray4096,
-  emitted_light: NibbleArray4096,
+  pub sky_light: NibbleArray4096,
+  pub emitted_light: NibbleArray4096,
   data: BitArray,
   palette: Option<Vec<u16>>,
   changed: bool,
