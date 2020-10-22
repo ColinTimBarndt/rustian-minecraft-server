@@ -1,5 +1,5 @@
 use crate::helpers::{EulerAngle, Vec3d};
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_PLAYER_POSITION_AND_LOOK, PacketSerialOut};
 
 const POSITION_THRESHOLD: f64 = 16.0;
 const ROTATION_THRESHOLD: f32 = 30.0;
@@ -42,7 +42,7 @@ pub struct PlayerPositionAndLookFlags(u8);
 type Flags = PlayerPositionAndLookFlags;
 
 impl PacketSerialOut for PlayerPositionAndLook {
-  const ID: u32 = 0x36;
+  const ID: u32 = PLAY_CB_PLAYER_POSITION_AND_LOOK;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::f64(buffer, self.x);
     write::f64(buffer, self.y);

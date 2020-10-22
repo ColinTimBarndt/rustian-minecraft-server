@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_JOIN_GAME, PacketSerialOut};
 use crate::server::universe::{
     world::{Dimension, LevelType},
     Gamemode,
@@ -20,7 +20,7 @@ pub struct JoinGame {
 }
 
 impl PacketSerialOut for JoinGame {
-    const ID: u32 = 0x26;
+    const ID: u32 = PLAY_CB_JOIN_GAME;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
         write::u32(buffer, self.entity_id);
         write::u8(buffer, self.gamemode as u8);

@@ -1,5 +1,7 @@
 use crate::helpers::NamespacedKey;
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+    data::read, packet_ids::PLAY_SB_PLUGIN_MESSAGE, PacketParsingError, PacketSerialIn,
+};
 
 /// # Plugin Message (serverbound)
 /// [Documentation](https://wiki.vg/Protocol#Plugin_Message_.28serverbound.29)
@@ -17,7 +19,7 @@ pub struct PluginMessage {
 }
 
 impl PacketSerialIn for PluginMessage {
-    const ID: u32 = 0x0B;
+    const ID: u32 = PLAY_SB_PLUGIN_MESSAGE;
     fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
         use std::convert::TryInto;
         Ok(Self {

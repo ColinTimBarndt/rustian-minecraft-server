@@ -1,4 +1,6 @@
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+  data::read, packet_ids::PLAY_SB_TELEPORT_CONFIRM, PacketParsingError, PacketSerialIn,
+};
 
 /// # Teleport Confirm
 /// [Documentation](https://wiki.vg/Protocol#Teleport_Confirm)
@@ -9,7 +11,7 @@ pub struct TeleportConfirm {
 }
 
 impl PacketSerialIn for TeleportConfirm {
-  const ID: u32 = 0x00;
+  const ID: u32 = PLAY_SB_TELEPORT_CONFIRM;
 
   fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     use std::convert::TryInto;

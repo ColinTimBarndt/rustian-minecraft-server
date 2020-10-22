@@ -1,4 +1,6 @@
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+  data::read, packet_ids::LOGIN_SB_ENCRYPTION_RESPONSE, PacketParsingError, PacketSerialIn,
+};
 
 #[derive(Debug)]
 /// # Encryption Response
@@ -11,7 +13,7 @@ pub struct EncryptionResponse {
 }
 
 impl PacketSerialIn for EncryptionResponse {
-  const ID: u32 = 0x01;
+  const ID: u32 = LOGIN_SB_ENCRYPTION_RESPONSE;
   fn read(buffer: &mut &[u8]) -> Result<EncryptionResponse, PacketParsingError> {
     let sl = read::var_u32(buffer)? as usize;
     let s_secret = read::byte_vec(buffer, sl)?;

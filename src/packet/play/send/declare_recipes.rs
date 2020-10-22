@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_DECLARE_RECIPES, PacketSerialOut};
 use crate::server::universe::crafting::recipe::{Recipe, ShapelessCraftingRecipe};
 use std::default::Default;
 
@@ -10,7 +10,7 @@ pub struct DeclareRecipes<'a> {
 }
 
 impl PacketSerialOut for DeclareRecipes<'_> {
-  const ID: u32 = 0x5B;
+  const ID: u32 = PLAY_CB_DECLARE_RECIPES;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     let count = self.crafting_shapeless.len() /* + ... */;
     write::var_usize(buffer, count);

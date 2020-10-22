@@ -1,5 +1,5 @@
 use crate::helpers::chat_components::ChatComponent;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_DISCONNECT, PacketSerialOut};
 
 /// # Disconnect (play)
 /// [Documentation](https://wiki.vg/Protocol#Disconnect_.28play.29)
@@ -12,7 +12,7 @@ pub struct Disconnect<'a> {
 }
 
 impl PacketSerialOut for Disconnect<'_> {
-  const ID: u32 = 0x1B;
+  const ID: u32 = PLAY_CB_DISCONNECT;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::chat_components(buffer, self.reason);
     Ok(())

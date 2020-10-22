@@ -21,6 +21,8 @@ use packet_handler::*;
 
 // Serial helper
 pub mod data;
+// Data id storage
+pub mod packet_ids;
 
 // Packets
 pub mod handshake;

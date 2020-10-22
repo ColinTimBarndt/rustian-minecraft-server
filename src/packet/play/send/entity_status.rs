@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_ENTITY_STATUS, PacketSerialOut};
 
 /// # Entity Status
 /// [Documentation](https://wiki.vg/Protocol#Entity_Status)
@@ -16,7 +16,7 @@ pub struct EntityStatus {
 }
 
 impl PacketSerialOut for EntityStatus {
-  const ID: u32 = 0x1C;
+  const ID: u32 = PLAY_CB_ENTITY_STATUS;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::u32(buffer, self.entity);
     write::u8(buffer, self.status);

@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_PLAYER_ABILITIES, PacketSerialOut};
 
 /// # Player Abilities (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Player_Abilities_.28clientbound.29)
@@ -16,7 +16,7 @@ pub struct PlayerAbilities {
 }
 
 impl PacketSerialOut for PlayerAbilities {
-  const ID: u32 = 0x32;
+  const ID: u32 = PLAY_CB_PLAYER_ABILITIES;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     let bits: u8 = (self.invulnerable as u8)
       | ((self.flying as u8) << 1)

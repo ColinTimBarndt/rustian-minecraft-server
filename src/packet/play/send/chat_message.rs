@@ -1,5 +1,5 @@
 use crate::helpers::chat_components::ChatComponent;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_CHAT_MESSAGE, PacketSerialOut};
 
 /// # Chat Message (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Chat_Message_.28clientbound.29)
@@ -30,7 +30,7 @@ impl<'a: 'b, 'b> ChatMessage<'b> {
 }
 
 impl PacketSerialOut for ChatMessage<'_> {
-  const ID: u32 = 0x0F;
+  const ID: u32 = PLAY_CB_CHAT_MESSAGE;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::chat_components(buffer, self.message);
     write::u8(buffer, self.message_type as u8);

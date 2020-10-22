@@ -1,5 +1,5 @@
 use crate::helpers::NibbleArray4096;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_UPDATE_LIGHT, PacketSerialOut};
 use crate::server::universe::world::{Chunk, ChunkPosition, LightSection};
 
 /// # Update Light
@@ -16,7 +16,7 @@ pub struct UpdateLight<'a> {
 }
 
 impl PacketSerialOut for UpdateLight<'_> {
-  const ID: u32 = 0x25;
+  const ID: u32 = PLAY_CB_UPDATE_LIGHT;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     self.clone().consume_write(buffer)
   }

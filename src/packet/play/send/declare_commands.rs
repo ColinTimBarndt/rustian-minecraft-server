@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_DECLARE_COMMANDS, PacketSerialOut};
 use crate::server::universe::commands::parsing::NodeGraph;
 
 #[derive(Debug)]
@@ -15,7 +15,7 @@ pub struct DeclareCommands<'a> {
 }
 
 impl PacketSerialOut for DeclareCommands<'_> {
-  const ID: u32 = 0x12;
+  const ID: u32 = PLAY_CB_DECLARE_COMMANDS;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     self.command_parsing_graph.serialize_graph(buffer);
     Ok(())

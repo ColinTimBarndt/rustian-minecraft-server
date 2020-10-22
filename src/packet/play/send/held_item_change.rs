@@ -1,5 +1,5 @@
 use super::super::receive;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_HELD_ITEM_CHANGE, PacketSerialOut};
 
 /// # Held Item Change (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Held_Item_Change_.28clientbound.29)
@@ -11,7 +11,7 @@ pub struct HeldItemChange {
 }
 
 impl PacketSerialOut for HeldItemChange {
-  const ID: u32 = 0x40;
+  const ID: u32 = PLAY_CB_HELD_ITEM_CHANGE;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::u8(buffer, self.hotbar_slot);
     Ok(())

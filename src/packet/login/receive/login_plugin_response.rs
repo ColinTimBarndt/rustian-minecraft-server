@@ -1,4 +1,6 @@
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+  data::read, packet_ids::LOGIN_SB_LOGIN_PLUGIN_RESPONSE, PacketParsingError, PacketSerialIn,
+};
 
 #[derive(Debug)]
 /// # Login Plugin Response
@@ -13,7 +15,7 @@ pub struct LoginPluginResponse {
 }
 
 impl PacketSerialIn for LoginPluginResponse {
-  const ID: u32 = 0x02;
+  const ID: u32 = LOGIN_SB_LOGIN_PLUGIN_RESPONSE;
   fn read(buffer: &mut &[u8]) -> Result<LoginPluginResponse, PacketParsingError> {
     let m_id = read::var_u32(buffer)?;
     let successful = read::bool(buffer)?;

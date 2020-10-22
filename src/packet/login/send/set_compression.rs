@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::LOGIN_CB_SET_COMPRESSION, PacketSerialOut};
 
 #[derive(Debug, Clone)]
 pub struct SetCompression {
@@ -6,7 +6,7 @@ pub struct SetCompression {
 }
 
 impl PacketSerialOut for SetCompression {
-  const ID: u32 = 0x03;
+  const ID: u32 = LOGIN_CB_SET_COMPRESSION;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     (*self).clone().consume_write(buffer)
   }

@@ -1,5 +1,7 @@
 use super::super::send;
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+  data::read, packet_ids::PLAY_SB_HELD_ITEM_CHANGE, PacketParsingError, PacketSerialIn,
+};
 use std::convert::TryInto;
 
 /// # Held Item Change (serverbound)
@@ -12,7 +14,7 @@ pub struct HeldItemChange {
 }
 
 impl PacketSerialIn for HeldItemChange {
-  const ID: u32 = 0x23;
+  const ID: u32 = PLAY_SB_HELD_ITEM_CHANGE;
   fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     Ok(Self {
       hotbar_slot: match read::u16(buffer)?.try_into() {

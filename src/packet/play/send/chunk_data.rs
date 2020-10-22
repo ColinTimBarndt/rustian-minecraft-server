@@ -1,5 +1,5 @@
 use crate::helpers::{BitArray, NibbleArray4096};
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_CHUNK_DATA, PacketSerialOut};
 use crate::server::universe::world::ChunkSection;
 use crate::server::universe::world::{blocks, Chunk, ChunkPosition};
 use std::mem;
@@ -36,7 +36,7 @@ pub struct ChunkSectionData<'a> {
 }
 
 impl<'a> PacketSerialOut for ChunkData<'a> {
-  const ID: u32 = 0x22;
+  const ID: u32 = PLAY_CB_CHUNK_DATA;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     self.clone().consume_write(buffer)
   }

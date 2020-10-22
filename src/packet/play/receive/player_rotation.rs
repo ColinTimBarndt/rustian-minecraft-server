@@ -1,6 +1,7 @@
 use crate::helpers::{EulerAngle, Vec3d};
 use crate::packet::{
   data::{finite_f32, read},
+  packet_ids::PLAY_SB_PLAYER_ROTATION,
   PacketParsingError, PacketSerialIn,
 };
 
@@ -27,7 +28,7 @@ pub struct PlayerRotation {
 }
 
 impl PacketSerialIn for PlayerRotation {
-  const ID: u32 = 0x13;
+  const ID: u32 = PLAY_SB_PLAYER_ROTATION;
 
   fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     Ok(Self {

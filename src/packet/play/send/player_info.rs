@@ -1,5 +1,5 @@
 use crate::helpers::chat_components::ChatComponent;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_PLAYER_INFO, PacketSerialOut};
 use crate::server::universe::entity::player::game_profile::{GameProfile, GameProfileProperty};
 use crate::server::universe::Gamemode;
 
@@ -32,7 +32,7 @@ pub struct PlayerInfoAddPlayerEntry<'a> {
 }
 
 impl PacketSerialOut for PlayerInfo<'_> {
-  const ID: u32 = 0x34;
+  const ID: u32 = PLAY_CB_PLAYER_INFO;
 
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     match self {

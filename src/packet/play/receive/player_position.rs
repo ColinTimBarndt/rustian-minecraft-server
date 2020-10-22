@@ -1,6 +1,7 @@
 use crate::helpers::Vec3d;
 use crate::packet::{
   data::{finite_f64, read},
+  packet_ids::PLAY_SB_PLAYER_POSITION,
   PacketParsingError, PacketSerialIn,
 };
 
@@ -37,7 +38,7 @@ pub struct PlayerPosition {
 }
 
 impl PacketSerialIn for PlayerPosition {
-  const ID: u32 = 0x11;
+  const ID: u32 = PLAY_SB_PLAYER_POSITION;
 
   fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
     Ok(Self {

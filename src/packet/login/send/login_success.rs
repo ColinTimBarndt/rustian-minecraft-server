@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::LOGIN_CB_LOGIN_SUCCESS, PacketSerialOut};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -8,7 +8,7 @@ pub struct LoginSuccess {
 }
 
 impl PacketSerialOut for LoginSuccess {
-  const ID: u32 = 0x02;
+  const ID: u32 = LOGIN_CB_LOGIN_SUCCESS;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::string(buffer, self.uuid.to_hyphenated().to_string());
     write::string(buffer, self.username.clone());

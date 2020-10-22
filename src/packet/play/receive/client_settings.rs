@@ -1,4 +1,6 @@
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+    data::read, packet_ids::PLAY_SB_CLIENT_SETTINGS, PacketParsingError, PacketSerialIn,
+};
 use crate::server::universe::entity::player::{
     DisplayedPlayerModelParts, PlayerChatMode, PlayerHand, PlayerSettings,
 };
@@ -12,7 +14,7 @@ pub struct ClientSettings {
 }
 
 impl PacketSerialIn for ClientSettings {
-    const ID: u32 = 0x05;
+    const ID: u32 = PLAY_SB_CLIENT_SETTINGS;
     fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
         use num_traits::FromPrimitive;
         let locale = read::string(buffer)?;

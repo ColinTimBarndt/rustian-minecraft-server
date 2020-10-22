@@ -1,5 +1,5 @@
 use crate::helpers::NamespacedKey;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_PLUGIN_MESSAGE, PacketSerialOut};
 
 /// # Plugin Message (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Plugin_Message_.28clientbound.29)
@@ -14,7 +14,7 @@ pub struct PluginMessage<'a> {
 }
 
 impl PacketSerialOut for PluginMessage<'_> {
-    const ID: u32 = 0x19;
+    const ID: u32 = PLAY_CB_PLUGIN_MESSAGE;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
         let channel = self.channel.to_string();
         write::string(buffer, channel);

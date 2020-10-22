@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_SERVER_DIFFICULTY, PacketSerialOut};
 
 /// # Server Difficulty
 /// [Documentation](https://wiki.vg/Protocol#Server_Difficulty)
@@ -11,7 +11,7 @@ pub struct Difficulty {
 }
 
 impl PacketSerialOut for Difficulty {
-  const ID: u32 = 0x0E;
+  const ID: u32 = PLAY_CB_SERVER_DIFFICULTY;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::u8(buffer, self.difficulty as u8);
     write::bool(buffer, self.locked);

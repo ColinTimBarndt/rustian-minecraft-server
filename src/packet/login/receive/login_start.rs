@@ -1,4 +1,6 @@
-use crate::packet::{data::read, PacketParsingError, PacketSerialIn};
+use crate::packet::{
+  data::read, packet_ids::LOGIN_SB_LOGIN_START, PacketParsingError, PacketSerialIn,
+};
 
 #[derive(Debug)]
 /// # Login Start
@@ -9,7 +11,7 @@ pub struct LoginStart {
 }
 
 impl PacketSerialIn for LoginStart {
-  const ID: u32 = 0x00;
+  const ID: u32 = LOGIN_SB_LOGIN_START;
   fn read(buffer: &mut &[u8]) -> Result<LoginStart, PacketParsingError> {
     Ok(Self {
       name: read::string(buffer)?,

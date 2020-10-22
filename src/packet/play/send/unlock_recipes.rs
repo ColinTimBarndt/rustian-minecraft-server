@@ -1,5 +1,5 @@
 use crate::helpers::NamespacedKey;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_UNLOCK_RECIPES, PacketSerialOut};
 
 /// # Unlock Recipes
 /// [Documentation](https://wiki.vg/Protocol#Unlock_Recipes)
@@ -11,7 +11,7 @@ pub struct UnlockRecipes<'a> {
 }
 
 impl PacketSerialOut for UnlockRecipes<'_> {
-  const ID: u32 = 0x37;
+  const ID: u32 = PLAY_CB_UNLOCK_RECIPES;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::var_u8(buffer, self.action.get_id());
     self.crafting_recipe_book.serialize(buffer);

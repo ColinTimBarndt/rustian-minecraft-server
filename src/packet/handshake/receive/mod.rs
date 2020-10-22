@@ -1,4 +1,6 @@
-use crate::packet::{PacketParsingError, PacketSerialIn, PlayerConnectionState};
+use crate::packet::{
+    packet_ids::HANDSHAKE_SB_HANDSHAKE, PacketParsingError, PacketSerialIn, PlayerConnectionState,
+};
 
 #[derive(Debug)]
 pub struct Handshake {
@@ -9,7 +11,7 @@ pub struct Handshake {
 }
 
 impl PacketSerialIn for Handshake {
-    const ID: u32 = 0x00;
+    const ID: u32 = HANDSHAKE_SB_HANDSHAKE;
     fn read(buffer: &mut &[u8]) -> Result<Self, PacketParsingError> {
         use crate::packet::data::read;
 

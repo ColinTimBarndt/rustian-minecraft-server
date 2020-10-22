@@ -1,5 +1,5 @@
 use super::super::receive;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_KEEP_ALIVE, PacketSerialOut};
 
 /// # Keep Alive (clientbound)
 /// [Documentation](https://wiki.vg/Protocol#Keep_Alive_.28clientbound.29)
@@ -18,7 +18,7 @@ pub struct KeepAlive {
 }
 
 impl PacketSerialOut for KeepAlive {
-  const ID: u32 = 0x21;
+  const ID: u32 = PLAY_CB_KEEP_ALIVE;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::u64(buffer, self.keep_alive_id);
     Ok(())

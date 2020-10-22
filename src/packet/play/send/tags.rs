@@ -1,5 +1,5 @@
 use crate::helpers::Registry;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::PLAY_CB_TAGS, PacketSerialOut};
 use crate::server::registries::{Block, EntityType, Fluid, Item};
 use crate::server::universe::tags::{Tag, TagList};
 // use std::string::ToString;
@@ -15,7 +15,7 @@ pub struct Tags {
 }
 
 impl PacketSerialOut for Tags {
-  const ID: u32 = 0x5C;
+  const ID: u32 = PLAY_CB_TAGS;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write_tag_list(buffer, &self.blocks);
     write_tag_list(buffer, &self.items);

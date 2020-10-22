@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::LOGIN_CB_LOGIN_PLUGIN_REQUEST, PacketSerialOut};
 
 /// [Documentation](https://wiki.vg/Protocol#Login_Plugin_Request)
 #[derive(Debug, Clone)]
@@ -9,7 +9,7 @@ pub struct LoginPluginRequest {
 }
 
 impl PacketSerialOut for LoginPluginRequest {
-  const ID: u32 = 0x04;
+  const ID: u32 = LOGIN_CB_LOGIN_PLUGIN_REQUEST;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     write::var_u32(buffer, self.message_identifier.clone());
     write::string(buffer, self.channel_namespace.clone());

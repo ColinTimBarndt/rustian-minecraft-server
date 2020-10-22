@@ -1,4 +1,4 @@
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{data::write, packet_ids::LOGIN_CB_ENCRYPTION_REQUEST, PacketSerialOut};
 
 #[derive(Debug, Clone)]
 /// # Encryption Request
@@ -34,7 +34,7 @@ impl EncryptionRequest {
 }
 
 impl PacketSerialOut for EncryptionRequest {
-  const ID: u32 = 0x01;
+  const ID: u32 = LOGIN_CB_ENCRYPTION_REQUEST;
   fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
     (*self).clone().consume_write(buffer)
   }

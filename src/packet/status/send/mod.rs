@@ -1,5 +1,9 @@
 use crate::helpers::chat_components::ChatComponent;
-use crate::packet::{data::write, PacketSerialOut};
+use crate::packet::{
+    data::write,
+    packet_ids::{STATUS_CB_PONG, STATUS_CB_RESPONSE},
+    PacketSerialOut,
+};
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -179,7 +183,7 @@ impl Pong {
 }
 
 impl PacketSerialOut for Response<'_> {
-    const ID: u32 = 0x00;
+    const ID: u32 = STATUS_CB_RESPONSE;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
         let mut json_string = Vec::with_capacity(200);
         self.status.serialize_json(&mut json_string);
@@ -189,7 +193,7 @@ impl PacketSerialOut for Response<'_> {
 }
 
 impl PacketSerialOut for Pong {
-    const ID: u32 = 0x01;
+    const ID: u32 = STATUS_CB_PONG;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
         write::u64(buffer, self.payload);
         Ok(())
