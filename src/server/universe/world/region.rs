@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
-use tokio::sync::{broadcast, oneshot};
+use tokio::sync::Mutex;
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 // TODO: Send update packets to subscribers
 
@@ -35,6 +35,7 @@ pub struct Region {
   /// when a chunk changes.
   pub subscribers: [HashMap<u32, PlayerConnectionPacketHandle>; CHUNK_ARRAY_LEN],
   handle: Option<<Region as Actor>::Handle>,
+  ticks_to_process: Arc<Mutex<u8>>,
 }
 
 impl Region {
@@ -49,6 +50,7 @@ impl Region {
         HashMap::new(),
       ],
       handle: None,
+      ticks_to_process: Mutex::new(0u8).into(),
     }
   }
   /// Takes an absolute chunk position and converts it
@@ -214,41 +216,59 @@ impl Actor for Region {
 
   async fn start_actor(
     mut self,
-    mut recv: Receiver<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+    mut recv: mpsc::Receiver<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
   ) -> Self {
     use std::time::Duration;
-    use tokio::sync::mpsc::error::{TryRecvError, TrySendError};
-    let mut tick_interval = {
-      // Send a message to the interval channel 20 times a second
+    {
+      // Send a message to the message channel 20 times a second
       // To tell the region to process a game tick. If the region
       // has too much to calculate, the interval channel fills up
       // until it is full.
-      let (mut s, r) = channel(20);
+
+      // Store how many ticks this region still has to process
+      let ticks_to_process = self.ticks_to_process.clone();
+      // Store how many ticks this region is lagging behind
+      let mut ticks_handle = self.clone_handle();
       // This thread is going to sleep most of the time, so green
       // threads should be used.
       tokio::task::spawn(async move {
         let mut intv = tokio::time::interval(Duration::from_secs_f32(1f32 / 20f32));
+        let mut lag: u16 = 0;
         loop {
           intv.tick().await;
-          match s.try_send(()) {
-            Ok(()) => (),
-            Err(TrySendError::Full(_)) => {
-              continue;
+          let mut ttp = ticks_to_process.lock().await;
+          match *ttp {
+            0..=3 if lag > 0 => {
+              // Process two ticks if lagging behind
+              if let Err(()) = ticks_handle.perform_tick(2).await {
+                eprintln!("[region.rs] Failed to send tick message");
+                return;
+              }
+              lag -= 1;
+              *ttp += 2;
             }
-            Err(TrySendError::Closed(_)) => {
-              return;
+            0..=19 => {
+              // Process one tick
+              if let Err(()) = ticks_handle.perform_tick(1).await {
+                eprintln!("[region.rs] Failed to send tick message");
+                return;
+              }
+              *ttp += 1;
+            }
+            20..=255 => {
+              // Skipping ticks if the region is lagging and
+              // remember how many ticks were skipped
+              lag = lag.saturating_add(1);
             }
           }
         }
       });
-      r
     };
     // This loop handles all incoming messages before processing the next tick
-    // TODO: Make this async
     loop {
       // Try to read a message
-      match recv.try_recv() {
-        Ok(msg) => {
+      match recv.recv().await {
+        Some(msg) => {
           match msg {
             ActorMessage::StopActor => {
               return self;
@@ -261,25 +281,7 @@ impl Actor for Region {
           }
           continue;
         }
-        Err(TryRecvError::Empty) => {
-          // If no more messages are available, process the next tick if necessary
-          // Ticks only fire every 1/20 seconds or more (depending on delay caused by messages)
-          // If multiple ticks are missed, they stacked on the tick channel
-          match tick_interval.try_recv() {
-            Ok(()) => {
-              // Do a tick
-              self.tick();
-            }
-            Err(TryRecvError::Empty) => {
-              continue;
-            }
-            Err(TryRecvError::Closed) => {
-              return self;
-            }
-          }
-          continue;
-        }
-        Err(TryRecvError::Closed) => {
+        None => {
           eprintln!("All handles for Actor 🧍 '{}' were dropped", self);
           return self;
         }
@@ -289,6 +291,14 @@ impl Actor for Region {
 
   async fn handle_message(&mut self, message: <Self::Handle as ActorHandle>::Message) -> bool {
     match message {
+      RegionMessage::PerformTick(amount) => {
+        for _ in 0..amount {
+          self.tick();
+          let mut ttp = self.ticks_to_process.lock().await;
+          *ttp = ttp.saturating_sub(1);
+        }
+        true
+      }
       // Process the message
       RegionMessage::GetBlock {
         offset: off,
@@ -419,7 +429,7 @@ impl Actor for Region {
 
   fn create_handle(
     &self,
-    sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+    sender: mpsc::Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
   ) -> Self::Handle {
     sender.into()
   }
@@ -434,33 +444,33 @@ impl Actor for Region {
 }
 
 impl RegionHandle {
+  /// Tells the region to perform one game tick
+  async fn perform_tick(&mut self, amount: u8) -> Result<(), ()> {
+    self
+      .send_raw_message(ActorMessage::Other(RegionMessage::PerformTick(amount)))
+      .await
+      .map_err(|_| ())
+  }
   /// Get a block inside of this region with the given offset.
   ///
   /// Note: Do not use absolute block coordinates.
-  pub async fn get_block(
-    &mut self,
-    offset: Vec3d<i32>,
-  ) -> Result<Option<Block>, SendError<ActorMessage<RegionMessage>>> {
+  pub async fn get_block(&mut self, offset: Vec3d<i32>) -> Result<Option<Block>, ()> {
     let (sender, callback) = oneshot::channel();
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::GetBlock {
         offset,
         channel: sender,
       }))
-      .await?;
-    match callback.await {
-      Ok(opt) => Ok(opt),
-      Err(_) => panic!("The sender channel got dropped somehow"),
-    }
+      .await
+      .map_err(|_| ())?;
+    callback.await.map_err(|_| ())
   }
 
-  pub async fn set_chunk(
-    &mut self,
-    chunk: Box<Chunk>,
-  ) -> Result<(), SendError<ActorMessage<RegionMessage>>> {
+  pub async fn set_chunk(&mut self, chunk: Box<Chunk>) -> Result<(), ()> {
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::SetChunk(chunk)))
       .await
+      .map_err(|_| ())
   }
 
   #[deprecated(since = "0.1.0", note = "Use the subscription model!")]
@@ -468,13 +478,14 @@ impl RegionHandle {
     &mut self,
     offset: ChunkPosition,
     sender: broadcast::Sender<Option<Arc<(u32, Vec<u8>)>>>,
-  ) -> Result<(), SendError<ActorMessage<RegionMessage>>> {
+  ) -> Result<(), ()> {
     self
       .send_raw_message(ActorMessage::Other(
         #[allow(deprecated)]
         RegionMessage::BroadcastChunk { offset, sender },
       ))
       .await
+      .map_err(|_| ())
   }
 
   pub async fn player_subscribe(
@@ -541,4 +552,5 @@ pub enum RegionMessage {
     chunk: ChunkPosition,
     player_id: u32,
   },
+  PerformTick(u8),
 }
