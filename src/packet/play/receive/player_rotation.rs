@@ -1,4 +1,4 @@
-use crate::helpers::{EulerAngle, Vec3d};
+use crate::helpers::EulerAngle;
 use crate::packet::{
   data::{finite_f32, read},
   packet_ids::PLAY_SB_PLAYER_ROTATION,

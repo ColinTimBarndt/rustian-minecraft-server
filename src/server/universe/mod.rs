@@ -91,7 +91,13 @@ pub type UniverseHandle = ActorHandleStruct<UniverseMessage>;
 #[derive(Debug)]
 pub enum WorldCreationError {
   WorldNameAlreadyExists,
-  SendError,
+  MessagingError(ActorMessagingError),
+}
+
+impl From<ActorMessagingError> for WorldCreationError {
+  fn from(e: ActorMessagingError) -> Self {
+    Self::MessagingError(e)
+  }
 }
 
 impl UniverseHandle {
@@ -109,46 +115,47 @@ impl UniverseHandle {
         loader: loader.into(),
         callback: send,
       }))
-      .await
-      .map_err(|_| WorldCreationError::SendError)?;
-    match recv.await.map_err(|_| WorldCreationError::SendError)? {
+      .await?;
+    match recv.await.map_err(|e| ActorMessagingError::from(e))? {
       true => Ok(()),
       false => Err(WorldCreationError::WorldNameAlreadyExists),
     }
   }
   /// Gets a world by its namespaced key, which is unique for each universe
-  pub async fn get_world(&mut self, id: NamespacedKey) -> Result<Option<world::WorldHandle>, ()> {
+  pub async fn get_world(
+    &mut self,
+    id: NamespacedKey,
+  ) -> ActorMessagingResult<Option<world::WorldHandle>> {
     let (send, recv) = oneshot::channel();
     self
       .send_raw_message(ActorMessage::Other(UniverseMessage::GetWorld(id, send)))
-      .await
-      .map_err(|_| ())?;
-    recv.await.map_err(|_| ())
+      .await?;
+    Ok(recv.await?)
   }
   /// Returns a world where the given player would join
-  pub async fn join_world(&mut self, player: uuid::Uuid) -> Result<world::WorldHandle, ()> {
+  pub async fn join_world(
+    &mut self,
+    player: uuid::Uuid,
+  ) -> ActorMessagingResult<world::WorldHandle> {
     let (send, recv) = oneshot::channel();
     self
       .send_raw_message(ActorMessage::Other(UniverseMessage::JoinWorld(
         player, send,
       )))
-      .await
-      .map_err(|_| ())?;
-    recv.await.map_err(|_| ())
+      .await?;
+    Ok(recv.await?)
   }
-  pub async fn reserve_entity_id(&mut self) -> Result<u32, ()> {
+  pub async fn reserve_entity_id(&mut self) -> ActorMessagingResult<u32> {
     let (send, recv) = oneshot::channel();
     self
       .send_raw_message(ActorMessage::Other(UniverseMessage::ReserveEntityId(send)))
-      .await
-      .map_err(|_| ())?;
-    recv.await.map_err(|_| ())
+      .await?;
+    Ok(recv.await?)
   }
-  pub async fn free_entity_id(&mut self, id: u32) -> Result<(), ()> {
+  pub async fn free_entity_id(&mut self, id: u32) -> ActorMessagingResult {
     self
       .send_raw_message(ActorMessage::Other(UniverseMessage::FreeEntityId(id)))
       .await
-      .map_err(|_| ())
   }
 }
 

@@ -1,10 +1,11 @@
+use super::ConnectionError;
+use crate::actor_model::*;
 use crate::helpers::mojang_api;
 use crate::packet::{
     LoggingInState, PacketHandlerMessage, PacketParsingError, PacketReceiver, PacketSerialIn,
     PlayerConnectionState,
 };
 use crate::server::universe::entity::player::EntityPlayer;
-use std::error::Error;
 
 pub mod receive;
 pub mod send;
@@ -13,7 +14,7 @@ pub async fn handle(
     receiver: &mut PacketReceiver,
     id: u32,
     mut buffer: &[u8],
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), ConnectionError> {
     match id {
         receive::LoginStart::ID => {
             // Handle Login request
@@ -53,16 +54,20 @@ pub async fn handle(
             let mut verify_token = vec![0; key.size() as usize];
             let mut shared_secret = vec![0; key.size() as usize];
             {
-                let amount_vt = key.private_decrypt(
-                    &packet.verify_token, // from
-                    &mut verify_token,    // to
-                    openssl::rsa::Padding::PKCS1,
-                )?;
-                let amount_ss = key.private_decrypt(
-                    &packet.shared_secret, // from
-                    &mut shared_secret,    // to
-                    openssl::rsa::Padding::PKCS1,
-                )?;
+                let amount_vt = key
+                    .private_decrypt(
+                        &packet.verify_token, // from
+                        &mut verify_token,    // to
+                        openssl::rsa::Padding::PKCS1,
+                    )
+                    .map_err(|crypt_err| ConnectionError::Other(crypt_err.to_string()))?;
+                let amount_ss = key
+                    .private_decrypt(
+                        &packet.shared_secret, // from
+                        &mut shared_secret,    // to
+                        openssl::rsa::Padding::PKCS1,
+                    )
+                    .map_err(|crypt_err| ConnectionError::Other(crypt_err.to_string()))?;
                 verify_token.truncate(amount_vt);
                 shared_secret.truncate(amount_ss);
             }
@@ -98,7 +103,8 @@ pub async fn handle(
                         receiver
                             .handler_channel
                             .send(PacketHandlerMessage::CloseChannel)
-                            .await?;
+                            .await
+                            .map_err(|_| ActorMessagingError::new("Failed to close channel"))?;
                         return Ok(());
                     }
                     Err(mojang_api::Error::MalformedResponse) => {
@@ -119,7 +125,8 @@ pub async fn handle(
                         receiver
                             .handler_channel
                             .send(PacketHandlerMessage::CloseChannel)
-                            .await?;
+                            .await
+                            .map_err(|_| ActorMessagingError::new("Failed to close channel"))?;
                         return Ok(());
                     }
                     Err(mojang_api::Error::ServiceUnavailable) => {
@@ -138,7 +145,8 @@ pub async fn handle(
                         receiver
                             .handler_channel
                             .send(PacketHandlerMessage::CloseChannel)
-                            .await?;
+                            .await
+                            .map_err(|_| ActorMessagingError::new("Failed to close channel"))?;
                         return Ok(());
                     }
                 };
@@ -167,14 +175,14 @@ pub async fn handle(
                 receiver
                     .handler_channel
                     .send(super::PacketHandlerMessage::GetServer(send))
-                    .await?;
-                let mut server = recv.await?;
+                    .await
+                    .map_err(|_| {
+                        ActorMessagingError::new("Failed to send GetServer request to handler")
+                    })?;
+                let mut server = recv.await.map_err(|e| ActorMessagingError::from(e))?;
                 let mut universe = server.get_universe(user_uuid.clone()).await?;
                 let entity_player = {
-                    let eid = universe
-                        .reserve_entity_id()
-                        .await
-                        .map_err(|_| "Failed to reserve entity id")?;
+                    let eid = universe.reserve_entity_id().await?;
                     EntityPlayer::new(eid, profile)
                 };
 
@@ -219,10 +227,11 @@ pub async fn handle(
                 receiver
                     .handler_channel
                     .send(PacketHandlerMessage::CloseChannel)
-                    .await?;
+                    .await
+                    .map_err(|_| ActorMessagingError::new("Failed to close channel"))?;
             }
             Ok(())
         }
-        _ => return Err(Box::new(PacketParsingError::UnknownPacket(id))),
+        _ => return Err(PacketParsingError::UnknownPacket(id).into()),
     }
 }

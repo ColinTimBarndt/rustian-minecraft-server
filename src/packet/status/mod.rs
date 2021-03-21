@@ -1,8 +1,9 @@
+use super::ConnectionError;
+use crate::actor_model::*;
 use crate::helpers::chat_components::{ChatColor, ChatComponent};
 use crate::packet::{
     packet_handler::PacketParsingError, PacketHandlerMessage, PacketReceiver, PacketSerialIn,
 };
-use std::error::Error;
 
 pub mod receive;
 pub mod send;
@@ -11,7 +12,7 @@ pub async fn handle(
     receiver: &mut PacketReceiver,
     id: u32,
     mut buffer: &[u8],
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), ConnectionError> {
     match id {
         receive::Request::ID => {
             // Handle server status request
@@ -50,9 +51,10 @@ pub async fn handle(
             receiver
                 .handler_channel
                 .send(PacketHandlerMessage::CloseChannel)
-                .await?;
+                .await
+                .map_err(|_| ActorMessagingError::new("Failed to close channel"))?;
             Ok(())
         }
-        _ => return Err(Box::new(PacketParsingError::UnknownPacket(id))),
+        id => return Err(PacketParsingError::UnknownPacket(id).into()),
     }
 }

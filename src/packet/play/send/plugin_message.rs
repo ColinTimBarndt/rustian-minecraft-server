@@ -17,14 +17,14 @@ impl PacketSerialOut for PluginMessage<'_> {
     const ID: u32 = PLAY_CB_PLUGIN_MESSAGE;
     fn write(&self, buffer: &mut Vec<u8>) -> Result<(), String> {
         let channel = self.channel.to_string();
-        write::string(buffer, channel);
+        write::string(buffer, &channel);
         write::var_u32(buffer, self.data.len() as u32);
         buffer.extend_from_slice(self.data);
         Ok(())
     }
-    fn consume_write(mut self, buffer: &mut Vec<u8>) -> Result<(), String> {
+    fn consume_write(self, buffer: &mut Vec<u8>) -> Result<(), String> {
         let channel = self.channel.to_string();
-        write::string(buffer, channel);
+        write::string(buffer, &channel);
         write::var_u32(buffer, self.data.len() as u32);
         buffer.extend_from_slice(self.data);
         Ok(())

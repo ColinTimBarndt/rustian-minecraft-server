@@ -4,7 +4,7 @@ use std::default::Default;
 
 /// # Declare Recipes
 /// [Documentation](https://wiki.vg/Protocol#Declare_Recipes)
-#[derive()]
+// TODO: impl Debug
 pub struct DeclareRecipes<'a> {
   pub crafting_shapeless: Box<[&'a ShapelessCraftingRecipe]>, // etc. for every recipe type
 }

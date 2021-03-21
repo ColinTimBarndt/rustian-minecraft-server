@@ -29,103 +29,104 @@ pub mod read {
     use byteorder::{BigEndian, ReadBytesExt};
     use serde_json::Value as JsonValue;
     use std::error::Error;
+    use std::io::Read;
 
-    // TODO: Use the vec in reverse order and pop()
-
-    pub fn byte_vec(buffer: &mut &[u8], len: usize) -> Result<Vec<u8>, PacketParsingError> {
-        if buffer.len() >= len {
-            let vec = buffer[0..len].iter().map(|&x| x).collect();
-            *buffer = &buffer[len..];
-            Ok(vec)
-        } else {
-            Err(PacketParsingError::EndOfInput)
-        }
-    }
-
-    pub fn bool(buffer: &mut &[u8]) -> Result<bool, PacketParsingError> {
-        if buffer.len() >= 1 {
-            Ok(buffer.read_u8().unwrap() > 0)
-        } else {
-            Err(PacketParsingError::EndOfInput)
+    pub fn byte_vec<R: Read + ?Sized>(
+        buffer: &mut R,
+        len: usize,
+    ) -> Result<Vec<u8>, PacketParsingError> {
+        let mut buf = vec![0; len];
+        match buffer.read_exact(&mut buf) {
+            Ok(()) => Ok(buf),
+            Err(_) => Err(PacketParsingError::EndOfInput),
         }
     }
 
-    pub fn i8(buffer: &mut &[u8]) -> Result<i8, PacketParsingError> {
-        if buffer.len() >= 1 {
-            Ok(buffer.read_i8().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
-        }
-    }
-    pub fn u8(buffer: &mut &[u8]) -> Result<u8, PacketParsingError> {
-        if buffer.len() >= 1 {
-            Ok(buffer.read_u8().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
+    #[inline(always)]
+    pub fn bool<R: Read + ?Sized>(buffer: &mut R) -> Result<bool, PacketParsingError> {
+        match buffer.read_u8() {
+            Ok(byte) => Ok(byte != 0),
+            Err(_) => Err(PacketParsingError::EndOfInput),
         }
     }
 
-    pub fn i16(buffer: &mut &[u8]) -> Result<i16, PacketParsingError> {
-        if buffer.len() >= 2 {
-            Ok(buffer.read_i16::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
+    #[inline(always)]
+    pub fn i8<R: Read + ?Sized>(buffer: &mut R) -> Result<i8, PacketParsingError> {
+        match buffer.read_i8() {
+            Ok(byte) => Ok(byte),
+            Err(_) => Err(PacketParsingError::EndOfInput),
         }
     }
-    pub fn u16(buffer: &mut &[u8]) -> Result<u16, PacketParsingError> {
-        if buffer.len() >= 2 {
-            Ok(buffer.read_u16::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
-        }
-    }
-
-    pub fn i32(buffer: &mut &[u8]) -> Result<i32, PacketParsingError> {
-        if buffer.len() >= 4 {
-            Ok(buffer.read_i32::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
-        }
-    }
-    pub fn u32(buffer: &mut &[u8]) -> Result<u32, PacketParsingError> {
-        if buffer.len() >= 4 {
-            Ok(buffer.read_u32::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
+    #[inline(always)]
+    pub fn u8<R: Read + ?Sized>(buffer: &mut R) -> Result<u8, PacketParsingError> {
+        match buffer.read_u8() {
+            Ok(byte) => Ok(byte),
+            Err(_) => Err(PacketParsingError::EndOfInput),
         }
     }
 
-    pub fn i64(buffer: &mut &[u8]) -> Result<i64, PacketParsingError> {
-        if buffer.len() >= 8 {
-            Ok(buffer.read_i64::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
+    #[inline(always)]
+    pub fn i16<R: Read + ?Sized>(buffer: &mut R) -> Result<i16, PacketParsingError> {
+        match buffer.read_i16::<BigEndian>() {
+            Ok(n) => Ok(n),
+            Err(_) => Err(PacketParsingError::EndOfInput),
         }
     }
-    pub fn u64(buffer: &mut &[u8]) -> Result<u64, PacketParsingError> {
-        if buffer.len() >= 8 {
-            Ok(buffer.read_u64::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
-        }
-    }
-
-    pub fn f32(buffer: &mut &[u8]) -> Result<f32, PacketParsingError> {
-        if buffer.len() >= 4 {
-            Ok(buffer.read_f32::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
-        }
-    }
-    pub fn f64(buffer: &mut &[u8]) -> Result<f64, PacketParsingError> {
-        if buffer.len() >= 4 {
-            Ok(buffer.read_f64::<BigEndian>().unwrap())
-        } else {
-            Err(PacketParsingError::EndOfInput)
+    #[inline(always)]
+    pub fn u16<R: Read + ?Sized>(buffer: &mut R) -> Result<u16, PacketParsingError> {
+        match buffer.read_u16::<BigEndian>() {
+            Ok(n) => Ok(n),
+            Err(_) => Err(PacketParsingError::EndOfInput),
         }
     }
 
-    pub fn string(buffer: &mut &[u8]) -> Result<String, PacketParsingError> {
+    #[inline(always)]
+    pub fn i32<R: Read + ?Sized>(buffer: &mut R) -> Result<i32, PacketParsingError> {
+        match buffer.read_i32::<BigEndian>() {
+            Ok(n) => Ok(n),
+            Err(_) => Err(PacketParsingError::EndOfInput),
+        }
+    }
+    #[inline(always)]
+    pub fn u32<R: Read + ?Sized>(buffer: &mut R) -> Result<u32, PacketParsingError> {
+        match buffer.read_u32::<BigEndian>() {
+            Ok(n) => Ok(n),
+            Err(_) => Err(PacketParsingError::EndOfInput),
+        }
+    }
+
+    #[inline(always)]
+    pub fn i64<R: Read + ?Sized>(buffer: &mut R) -> Result<i64, PacketParsingError> {
+        match buffer.read_i64::<BigEndian>() {
+            Ok(n) => Ok(n),
+            Err(_) => Err(PacketParsingError::EndOfInput),
+        }
+    }
+    #[inline(always)]
+    pub fn u64<R: Read + ?Sized>(buffer: &mut R) -> Result<u64, PacketParsingError> {
+        match buffer.read_u64::<BigEndian>() {
+            Ok(n) => Ok(n),
+            Err(_) => Err(PacketParsingError::EndOfInput),
+        }
+    }
+
+    #[inline(always)]
+    pub fn f32<R: Read + ?Sized>(buffer: &mut R) -> Result<f32, PacketParsingError> {
+        match buffer.read_f32::<BigEndian>() {
+            Ok(f) => Ok(f),
+            Err(_) => Err(PacketParsingError::EndOfInput),
+        }
+    }
+    #[inline(always)]
+    pub fn f64<R: Read + ?Sized>(buffer: &mut R) -> Result<f64, PacketParsingError> {
+        match buffer.read_f64::<BigEndian>() {
+            Ok(f) => Ok(f),
+            Err(_) => Err(PacketParsingError::EndOfInput),
+        }
+    }
+
+    #[inline(always)]
+    pub fn string<R: Read + ?Sized>(buffer: &mut R) -> Result<String, PacketParsingError> {
         let len = var_u32(buffer)? as usize;
         let bytes = byte_vec(buffer, len)?;
         match String::from_utf8(bytes) {
@@ -134,17 +135,19 @@ pub mod read {
         }
     }
 
-    pub fn var_i32(buffer: &mut &[u8]) -> Result<i32, PacketParsingError> {
+    #[inline(always)]
+    pub fn var_i32<R: Read + ?Sized>(buffer: &mut R) -> Result<i32, PacketParsingError> {
         Ok(var_u32(buffer)? as i32)
     }
-    pub fn var_i64(buffer: &mut &[u8]) -> Result<i64, PacketParsingError> {
+    #[inline(always)]
+    pub fn var_i64<R: Read + ?Sized>(buffer: &mut R) -> Result<i64, PacketParsingError> {
         Ok(var_u64(buffer)? as i64)
     }
 
-    pub fn var_u32(buffer: &mut &[u8]) -> Result<u32, PacketParsingError> {
+    pub fn var_u32<R: Read + ?Sized>(buffer: &mut R) -> Result<u32, PacketParsingError> {
         return read_byte(buffer, 1);
 
-        fn read_byte(buffer: &mut &[u8], len: u8) -> Result<u32, PacketParsingError> {
+        fn read_byte<R: Read + ?Sized>(buffer: &mut R, len: u8) -> Result<u32, PacketParsingError> {
             if len > 5 {
                 return Err(PacketParsingError::VarNumberTooBig);
             }
@@ -177,10 +180,10 @@ pub mod read {
     // //        }
     // //    }
     // //}
-    pub fn var_u64(buffer: &mut &[u8]) -> Result<u64, PacketParsingError> {
+    pub fn var_u64<R: Read + ?Sized>(buffer: &mut R) -> Result<u64, PacketParsingError> {
         return read_byte(buffer, 1);
 
-        fn read_byte(buffer: &mut &[u8], len: u8) -> Result<u64, PacketParsingError> {
+        fn read_byte<R: Read + ?Sized>(buffer: &mut R, len: u8) -> Result<u64, PacketParsingError> {
             if len > 10 {
                 return Err(PacketParsingError::VarNumberTooBig);
             }
@@ -194,7 +197,7 @@ pub mod read {
         }
     }
 
-    pub fn json(buffer: &mut &[u8]) -> Result<JsonValue, PacketParsingError> {
+    pub fn json<R: Read + ?Sized>(buffer: &mut R) -> Result<JsonValue, PacketParsingError> {
         let s: String = string(buffer)?;
         match serde_json::from_str(&s) {
             Ok(json) => Ok(json),
@@ -202,7 +205,7 @@ pub mod read {
         }
     }
 
-    pub fn block_position(buffer: &mut &[u8]) -> Result<Vec3d<i32>, Box<dyn Error>> {
+    pub fn block_position<R: Read + ?Sized>(buffer: &mut R) -> Result<Vec3d<i32>, Box<dyn Error>> {
         let data = u64(buffer)?;
         let mut x = (data >> 38) as u32;
         let mut z = ((data << 26) >> 38) as u32;
@@ -228,69 +231,83 @@ pub mod read {
 pub mod write {
     use crate::helpers::{chat_components::ChatComponent, Vec3d};
     use byteorder::{BigEndian, WriteBytesExt};
-    use serde_json::Value as JsonValue;
+    use std::io::Write;
     use uuid::Uuid;
 
-    pub fn bool(buffer: &mut Vec<u8>, b: bool) {
+    #[inline(always)]
+    pub fn bool<W: Write + ?Sized>(buffer: &mut W, b: bool) {
         buffer.write_u8(b as u8).unwrap();
     }
 
-    pub fn i8(buffer: &mut Vec<u8>, n: i8) {
+    #[inline(always)]
+    pub fn i8<W: Write + ?Sized>(buffer: &mut W, n: i8) {
         buffer.write_i8(n).unwrap();
     }
-    pub fn u8(buffer: &mut Vec<u8>, n: u8) {
+    #[inline(always)]
+    pub fn u8<W: Write + ?Sized>(buffer: &mut W, n: u8) {
         buffer.write_u8(n).unwrap();
     }
 
-    pub fn i16(buffer: &mut Vec<u8>, n: i16) {
+    #[inline(always)]
+    pub fn i16<W: Write + ?Sized>(buffer: &mut W, n: i16) {
         buffer.write_i16::<BigEndian>(n).unwrap();
     }
-    pub fn u16(buffer: &mut Vec<u8>, n: u16) {
+    #[inline(always)]
+    pub fn u16<W: Write + ?Sized>(buffer: &mut W, n: u16) {
         buffer.write_u16::<BigEndian>(n).unwrap();
     }
 
-    pub fn i32(buffer: &mut Vec<u8>, n: i32) {
+    #[inline(always)]
+    pub fn i32<W: Write + ?Sized>(buffer: &mut W, n: i32) {
         buffer.write_i32::<BigEndian>(n).unwrap();
     }
-    pub fn u32(buffer: &mut Vec<u8>, n: u32) {
+    #[inline(always)]
+    pub fn u32<W: Write + ?Sized>(buffer: &mut W, n: u32) {
         buffer.write_u32::<BigEndian>(n).unwrap();
     }
 
-    pub fn i64(buffer: &mut Vec<u8>, n: i64) {
+    #[inline(always)]
+    pub fn i64<W: Write + ?Sized>(buffer: &mut W, n: i64) {
         buffer.write_i64::<BigEndian>(n).unwrap();
     }
-    pub fn u64(buffer: &mut Vec<u8>, n: u64) {
+    #[inline(always)]
+    pub fn u64<W: Write + ?Sized>(buffer: &mut W, n: u64) {
         buffer.write_u64::<BigEndian>(n).unwrap();
     }
 
-    pub fn f32(buffer: &mut Vec<u8>, n: f32) {
-        u32(buffer, n.to_bits());
+    #[inline(always)]
+    pub fn f32<W: Write + ?Sized>(buffer: &mut W, f: f32) {
+        u32(buffer, f.to_bits());
     }
-    pub fn f64(buffer: &mut Vec<u8>, n: f64) {
-        u64(buffer, n.to_bits());
+    #[inline(always)]
+    pub fn f64<W: Write + ?Sized>(buffer: &mut W, f: f64) {
+        u64(buffer, f.to_bits());
     }
 
-    pub fn raw(buffer: &mut Vec<u8>, raw: &[u8]) {
+    #[inline(always)]
+    pub fn raw<W: Write + ?Sized>(buffer: &mut W, raw: &[u8]) {
         var_usize(buffer, raw.len());
-        buffer.extend(raw);
+        buffer.write_all(raw).unwrap();
     }
-    pub fn string(buffer: &mut Vec<u8>, s: impl AsRef<str>) {
-        let bytes = s.as_ref().as_bytes();
-        var_usize(buffer, bytes.len());
-        buffer.extend(bytes);
+    #[inline(always)]
+    pub fn string<W: Write + ?Sized>(buffer: &mut W, s: &str) {
+        raw(buffer, s.as_bytes());
     }
 
-    pub fn var_i16(buffer: &mut Vec<u8>, n: i16) {
+    #[inline(always)]
+    pub fn var_i16<W: Write + ?Sized>(buffer: &mut W, n: i16) {
         var_u16(buffer, n as u16);
     }
-    pub fn var_i32(buffer: &mut Vec<u8>, n: i32) {
+    #[inline(always)]
+    pub fn var_i32<W: Write + ?Sized>(buffer: &mut W, n: i32) {
         var_u32(buffer, n as u32);
     }
-    pub fn var_i64(buffer: &mut Vec<u8>, n: i64) {
+    #[inline(always)]
+    pub fn var_i64<W: Write + ?Sized>(buffer: &mut W, n: i64) {
         var_u64(buffer, n as u64);
     }
 
-    pub fn var_u8(buffer: &mut Vec<u8>, n: u8) {
+    pub fn var_u8<W: Write + ?Sized>(buffer: &mut W, n: u8) {
         let byte = ((n as u8) & 0b01111111) | (((n > 0b01111111) as u8) << 7);
         u8(buffer, byte);
         if n > 0b01111111 {
@@ -299,7 +316,7 @@ pub mod write {
             // var_u8(buffer, byte >> 7);
         }
     }
-    pub fn var_u16(buffer: &mut Vec<u8>, n: u16) {
+    pub fn var_u16<W: Write + ?Sized>(buffer: &mut W, n: u16) {
         let next = n > 0b01111111;
         let byte = ((n as u8) & 0b01111111) | ((next as u8) << 7);
         u8(buffer, byte);
@@ -307,7 +324,7 @@ pub mod write {
             var_u16(buffer, n >> 7);
         }
     }
-    pub fn var_u32(buffer: &mut Vec<u8>, n: u32) {
+    pub fn var_u32<W: Write + ?Sized>(buffer: &mut W, n: u32) {
         let next = n > 0b01111111;
         let byte = ((n as u8) & 0b01111111) | ((next as u8) << 7);
         u8(buffer, byte);
@@ -315,7 +332,7 @@ pub mod write {
             var_u32(buffer, n >> 7);
         }
     }
-    pub fn var_u64(buffer: &mut Vec<u8>, n: u64) {
+    pub fn var_u64<W: Write + ?Sized>(buffer: &mut W, n: u64) {
         let next = n > 0b01111111;
         let byte = ((n as u8) & 0b01111111) | ((next as u8) << 7);
         u8(buffer, byte);
@@ -323,7 +340,7 @@ pub mod write {
             var_u64(buffer, n >> 7);
         }
     }
-    pub fn var_usize(buffer: &mut Vec<u8>, /*mut*/ n: usize) {
+    pub fn var_usize<W: Write + ?Sized>(buffer: &mut W, /*mut*/ n: usize) {
         // //loop {
         // //    let byte: u8 = ((n as u8) & 0b01111111) | (((n != 0) as u8) << 7);
         // //    n >>= 7;
@@ -340,63 +357,75 @@ pub mod write {
         }
     }
 
-    pub fn json(buffer: &mut Vec<u8>, json: &JsonValue) {
+    #[inline(always)]
+    pub fn json<W: Write + ?Sized, S: serde::ser::Serialize + ?Sized>(buffer: &mut W, json: &S) {
         let jsb = serde_json::ser::to_vec(json).unwrap();
-        var_usize(buffer, jsb.len());
-        // No error can occur here because the writer is a byte vec
-        buffer.extend(jsb);
+        raw(buffer, &jsb);
     }
 
-    pub fn chat_component(buffer: &mut Vec<u8>, comp: &ChatComponent) {
-        let mut json = Vec::new();
-        comp.serialize_json(&mut json);
-        var_usize(buffer, json.len());
-        println!("JSON: {:#?}", json);
-        buffer.append(&mut json);
+    #[inline(always)]
+    pub fn chat_component<W: Write + ?Sized>(buffer: &mut W, comp: &ChatComponent) {
+        let mut jsb = Vec::new();
+        comp.serialize_json(&mut jsb);
+        raw(buffer, &jsb);
     }
 
-    pub fn chat_components(buffer: &mut Vec<u8>, comps: &[ChatComponent]) {
+    pub fn chat_components<W: Write + ?Sized>(buffer: &mut W, comps: &[ChatComponent]) {
         if comps.len() == 1 {
             chat_component(buffer, &comps[0]);
             return;
         }
-        let mut json = Vec::new();
-        json.push(b'[');
+        let mut jsb = Vec::new();
+        jsb.push(b'[');
         {
             let mut iter = comps.iter();
             if let Some(comp) = iter.next() {
-                comp.serialize_json(&mut json);
+                comp.serialize_json(&mut jsb);
                 for comp in iter {
-                    json.push(b',');
-                    comp.serialize_json(&mut json);
+                    jsb.push(b',');
+                    comp.serialize_json(&mut jsb);
                 }
             }
         }
-        json.push(b']');
-        var_usize(buffer, json.len());
-        println!("JSON: {:#?}", json);
-        buffer.append(&mut json);
+        jsb.push(b']');
+        raw(buffer, &jsb);
     }
 
-    pub fn uuid(buffer: &mut Vec<u8>, uuid: Uuid) {
+    #[inline(always)]
+    pub fn uuid<W: Write + ?Sized>(buffer: &mut W, uuid: Uuid) {
         // TODO: Test endianness
-        buffer.extend_from_slice(uuid.as_bytes());
+        buffer.write_all(uuid.as_bytes()).unwrap();
     }
 
     /// Converts a block position into a 64-bit unsigned composite number
     /// X (signed 26-bit int) + Z (signed 26-bit int) + Y (signed 12-bit int)
     ///
     /// [Documentation](https://wiki.vg/Protocol#Position)
-    pub fn block_position(buffer: &mut Vec<u8>, pos: &Vec3d<i32>) {
+    pub fn block_position<W: Write + ?Sized>(
+        buffer: &mut W,
+        pos: &Vec3d<i32>,
+    ) -> Result<(), &'static str> {
         let x = pos.x;
-        assert!(x >= -33554432, "X must be >= -33554432");
-        assert!(x < 33554431, "X must be < 33554431");
+        if !(x >= -33554432) {
+            return Err("X must be >= -33554432");
+        }
+        if !(x < 33554431) {
+            return Err("X must be < 33554431");
+        }
         let z = pos.z;
-        assert!(z >= -33554432, "X must be >= -33554432");
-        assert!(z < 33554431, "X must be < 33554431");
+        if !(z >= -33554432) {
+            return Err("X must be >= -33554432");
+        }
+        if !(z < 33554431) {
+            return Err("X must be < 33554431");
+        }
         let y = pos.y;
-        assert!(y >= -2048, "Y must be >= -2048");
-        assert!(y < 2048, "Y must be < 2048");
+        if !(y >= -2048) {
+            return Err("Y must be >= -2048");
+        }
+        if !(y < 2048) {
+            return Err("Y must be < 2048");
+        }
 
         let x = if x < 0 {
             // Set the 26-bit int sign manually
@@ -419,6 +448,7 @@ pub mod write {
         let combined: u64 =
             ((x & 0x03_FF_FF_FF) << 38) | ((z & 0x03_FF_FF_FF) << 12) | (y & 0x0F_FF);
         u64(buffer, combined);
+        Ok(())
     }
 }
 
@@ -428,15 +458,16 @@ mod tests {
     use crate::helpers::Vec3d;
 
     #[test]
-    fn test_packet_block_position() {
+    fn test_packet_block_position() -> Result<(), &'static str> {
         let mut buffer: Vec<u8> = Vec::new();
         let pos: Vec3d<i32> = Vec3d::new(10, 255, -10);
-        write::block_position(&mut buffer, &pos);
+        write::block_position(&mut buffer, &pos)?;
         let mut buf_slice = &buffer[..];
         let decoded: Vec3d<i32> = read::block_position(&mut buf_slice).unwrap();
         assert_eq!(pos.x, decoded.x, "ne x");
         assert_eq!(pos.y, decoded.y, "ne y");
         assert_eq!(pos.z, decoded.z, "ne z");
+        Ok(())
     }
 
     #[test]

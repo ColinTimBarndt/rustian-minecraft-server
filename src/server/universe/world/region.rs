@@ -1,6 +1,7 @@
 use super::{Block, Chunk, ChunkPosition};
 use crate::actor_model::*;
 use crate::helpers::Vec3d;
+use crate::packet::packet_handler::ConnectionError;
 use crate::packet::play::send::{ChunkData, UpdateLight};
 use crate::packet::PlayerConnectionPacketHandle;
 use async_trait::async_trait;
@@ -240,8 +241,8 @@ impl Actor for Region {
           match *ttp {
             0..=3 if lag > 0 => {
               // Process two ticks if lagging behind
-              if let Err(()) = ticks_handle.perform_tick(2).await {
-                eprintln!("[region.rs] Failed to send tick message");
+              if let Err(e) = ticks_handle.perform_tick(2).await {
+                eprintln!("[region.rs] Failed to send tick message: {}", e);
                 return;
               }
               lag -= 1;
@@ -249,8 +250,8 @@ impl Actor for Region {
             }
             0..=19 => {
               // Process one tick
-              if let Err(()) = ticks_handle.perform_tick(1).await {
-                eprintln!("[region.rs] Failed to send tick message");
+              if let Err(e) = ticks_handle.perform_tick(1).await {
+                eprintln!("[region.rs] Failed to send tick message: {}", e);
                 return;
               }
               *ttp += 1;
@@ -399,7 +400,7 @@ impl Actor for Region {
               .await
               {
                 // Enforce error type
-                let e: String = e;
+                let e: ConnectionError = e;
                 eprintln!("[region.rs] Failed to send chunk packets: {}", e);
               }
             } else {
@@ -407,11 +408,8 @@ impl Actor for Region {
             }
           }
           self.subscribers[self.get_chunk_index(&position)].insert(player_id, connection);
-          println!("DEBUG Sending callback");
           if let Err(_) = callback.send(self.clone_handle()) {
             eprintln!("[region.rs] Failed to send callback");
-          } else {
-            println!("DEBUG Sent callback");
           }
         } else {
           eprintln!("[region.rs] Attempt to subscribe to chunk in wrong region");
@@ -445,32 +443,29 @@ impl Actor for Region {
 
 impl RegionHandle {
   /// Tells the region to perform one game tick
-  async fn perform_tick(&mut self, amount: u8) -> Result<(), ()> {
+  async fn perform_tick(&mut self, amount: u8) -> ActorMessagingResult {
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::PerformTick(amount)))
       .await
-      .map_err(|_| ())
   }
   /// Get a block inside of this region with the given offset.
   ///
   /// Note: Do not use absolute block coordinates.
-  pub async fn get_block(&mut self, offset: Vec3d<i32>) -> Result<Option<Block>, ()> {
+  pub async fn get_block(&mut self, offset: Vec3d<i32>) -> ActorMessagingResult<Option<Block>> {
     let (sender, callback) = oneshot::channel();
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::GetBlock {
         offset,
         channel: sender,
       }))
-      .await
-      .map_err(|_| ())?;
-    callback.await.map_err(|_| ())
+      .await?;
+    Ok(callback.await?)
   }
 
-  pub async fn set_chunk(&mut self, chunk: Box<Chunk>) -> Result<(), ()> {
+  pub async fn set_chunk(&mut self, chunk: Box<Chunk>) -> ActorMessagingResult {
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::SetChunk(chunk)))
       .await
-      .map_err(|_| ())
   }
 
   #[deprecated(since = "0.1.0", note = "Use the subscription model!")]
@@ -478,14 +473,13 @@ impl RegionHandle {
     &mut self,
     offset: ChunkPosition,
     sender: broadcast::Sender<Option<Arc<(u32, Vec<u8>)>>>,
-  ) -> Result<(), ()> {
+  ) -> ActorMessagingResult {
     self
       .send_raw_message(ActorMessage::Other(
         #[allow(deprecated)]
         RegionMessage::BroadcastChunk { offset, sender },
       ))
       .await
-      .map_err(|_| ())
   }
 
   pub async fn player_subscribe(
@@ -495,7 +489,7 @@ impl RegionHandle {
     connection: PlayerConnectionPacketHandle,
     send_complete: bool,
     callback: oneshot::Sender<RegionHandle>,
-  ) -> Result<(), ()> {
+  ) -> ActorMessagingResult {
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::PlayerSubscribe {
         chunk,
@@ -505,21 +499,19 @@ impl RegionHandle {
         callback,
       }))
       .await
-      .map_err(|_| ())
   }
 
   pub async fn player_unsubscribe(
     &mut self,
     chunk: ChunkPosition,
     player_id: u32,
-  ) -> Result<(), ()> {
+  ) -> ActorMessagingResult {
     self
       .send_raw_message(ActorMessage::Other(RegionMessage::PlayerUnsubscribe {
         chunk,
         player_id,
       }))
       .await
-      .map_err(|_| ())
   }
 }
 

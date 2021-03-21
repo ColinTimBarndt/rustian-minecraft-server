@@ -1,5 +1,8 @@
 use std::borrow::{Borrow, Cow};
 use std::hash::{Hash, Hasher};
+use std::io::Write;
+
+use super::MINECRAFT_NAMESPACE;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct NamespacedKey(Cow<'static, str>, Cow<'static, str>);
@@ -17,21 +20,26 @@ impl NamespacedKey {
     pub fn key(&self) -> &Cow<'static, str> {
         self.1.borrow()
     }
-    pub fn serialize_vec(buffer: &mut Vec<u8>, vec: &Vec<NamespacedKey>) {
+    pub fn serialize<W: Write + ?Sized>(&self, buffer: &mut W) {
+        use crate::packet::data::write;
+        write::var_usize(buffer, self.0.len() + self.1.len() + 1);
+        write::string(buffer, self.0.as_ref());
+        write::u8(buffer, b':');
+        write::string(buffer, self.1.as_ref());
+    }
+    pub fn serialize_vec<W: Write + ?Sized>(buffer: &mut W, vec: &[NamespacedKey]) {
         use crate::packet::data::write;
         write::var_usize(buffer, vec.len());
         for key in vec {
-            write::string(buffer, key.to_string());
+            key.serialize(buffer);
         }
     }
 }
 
 impl Hash for NamespacedKey {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
-        let namespace: Vec<u8> = self.0.bytes().collect();
-        hasher.write(&namespace);
-        let key: Vec<u8> = self.1.bytes().collect();
-        hasher.write(&key);
+        hasher.write(&self.0.as_bytes());
+        hasher.write(&self.1.as_bytes());
     }
 }
 
@@ -73,15 +81,20 @@ impl std::error::Error for NamespacedKeyFormatError {}
 impl std::convert::TryFrom<String> for NamespacedKey {
     type Error = NamespacedKeyFormatError;
     fn try_from(from: String) -> Result<Self, Self::Error> {
-        let parts = from.split(":").collect::<Vec<&str>>();
-        match parts.len() {
-            0 => Err(NamespacedKeyFormatError::MissingNamespace),
-            1 => Err(NamespacedKeyFormatError::MissingKey),
-            2 => Ok(NamespacedKey::new(
-                parts[0].to_string(),
-                parts[1].to_string(),
-            )),
-            _ => Err(NamespacedKeyFormatError::InvalidCharacters),
+        let parts = from.split_once(":");
+        match parts {
+            None => Ok(NamespacedKey::new(MINECRAFT_NAMESPACE, from)),
+            Some((ns, key)) => {
+                if key.len() == 0 {
+                    Err(NamespacedKeyFormatError::MissingKey)
+                } else {
+                    if key.contains(':') {
+                        Err(NamespacedKeyFormatError::InvalidCharacters)
+                    } else {
+                        Ok(NamespacedKey::new(ns.to_string(), key.to_string()))
+                    }
+                }
+            }
         }
     }
 }

@@ -1,5 +1,4 @@
-//#![allow(unused)]
-
+use crate::actor_model::*;
 use crate::server::MinecraftServerHandle;
 use core::hash::{Hash, Hasher};
 use num_derive::FromPrimitive;
@@ -167,16 +166,20 @@ impl PlayerConnection {
 }
 
 impl PlayerConnectionPacketHandle {
-    pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), String>
+    pub async fn send_packet<P>(&mut self, packet: P) -> PacketSendResult
     where
         P: PacketSerialOut + Sized,
     {
+        let id = P::ID;
         let mut buffer: Vec<u8> = Vec::new();
-        packet.consume_write(&mut buffer)?;
+        packet
+            .consume_write(&mut buffer)
+            .map_err(|msg| ConnectionError::FailedToSend(id, msg))?;
         self.sender_channel
-            .send(PacketSenderMessage::Packet(P::ID, buffer))
+            .send(PacketSenderMessage::Packet(id, buffer))
             .await
-            .map_err(|_| "Failed to send packet through sender channel".to_owned())
+            .map_err(|_| ActorMessagingError::new("Failed to send packet over sender channel"))?;
+        Ok(())
     }
     /// Sends a teleport packet and returns a result.
     /// If the result is Ok, awaiting it will wait for
@@ -187,18 +190,21 @@ impl PlayerConnectionPacketHandle {
     pub async fn send_teleport_packet(
         &mut self,
         packet: play::send::PlayerPositionAndLook,
-    ) -> Result<impl std::future::Future<Output = Result<(), ()>>, &'static str> {
+    ) -> PacketSendResult<impl std::future::Future<Output = ActorMessagingResult>> {
+        use futures::FutureExt;
         let (send, recv) = oneshot::channel();
         self.handler_channel
             .send(PacketHandlerMessage::SendTeleport(packet, send))
             .await
-            .map_err(|_| "Failed to send packet through sender channel")?;
-        Ok(async { recv.await.map_err(|_| ()) })
+            .map_err(|_| ActorMessagingError::new("Failed to send packet over sender channel"))?;
+        Ok(recv
+            .map(|r| r.map_err(|_| ActorMessagingError::new("Failed to await teleport callback"))))
     }
-    pub async fn close_channel(&mut self) -> Result<(), SendError<PacketHandlerMessage>> {
+    pub async fn close_channel(&mut self) -> ActorMessagingResult {
         self.handler_channel
             .send(PacketHandlerMessage::CloseChannel)
             .await
+            .map_err(|_| ActorMessagingError::new("Failed to close channel"))
     }
 }
 

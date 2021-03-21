@@ -1,4 +1,3 @@
-use crate::helpers::NibbleArray4096;
 use crate::packet::{data::write, packet_ids::PLAY_CB_UPDATE_LIGHT, PacketSerialOut};
 use crate::server::universe::world::{Chunk, ChunkPosition, LightSection};
 

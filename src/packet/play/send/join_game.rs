@@ -27,7 +27,7 @@ impl PacketSerialOut for JoinGame {
         write::i32(buffer, self.dimension as i32);
         write::u64(buffer, self.seed_hash);
         write::u8(buffer, 0); // Max Players (unused)
-        write::string(buffer, self.level_type.to_string());
+        write::string::<Vec<u8>>(buffer, self.level_type.to_string().as_ref());
         write::var_u32(buffer, self.view_distance);
         write::bool(buffer, self.reduced_debug_info);
         write::bool(buffer, self.show_respawn_screen);

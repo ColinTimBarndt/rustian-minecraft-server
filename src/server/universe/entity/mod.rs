@@ -2,7 +2,7 @@ use crate::actor_model::*;
 use crate::server::registries::EntityType;
 use async_trait::async_trait;
 use std::any::Any;
-use tokio::sync::mpsc::{error::SendError, Sender};
+use tokio::sync::mpsc;
 
 pub mod player;
 
@@ -32,7 +32,7 @@ pub trait EntityActorHandle: ActorHandle {
 #[derive(Debug)]
 pub struct EntityActorHandleStruct<M: Sized + Send + 'static, F: Sized + Send + Sync + 'static = ()>
 {
-  pub(super) sender: Sender<ActorMessage<M>>,
+  pub(super) sender: mpsc::Sender<ActorMessage<M>>,
   pub(super) id: u32,
   pub(super) final_properties: std::sync::Arc<F>,
 }
@@ -58,11 +58,12 @@ where
   F: Sized + Send + Sync + 'static,
 {
   type Message = M;
-  async fn send_raw_message(
-    &mut self,
-    message: ActorMessage<M>,
-  ) -> Result<(), SendError<ActorMessage<M>>> {
-    self.sender.send(message).await
+  async fn send_raw_message(&mut self, message: ActorMessage<M>) -> ActorMessagingResult {
+    self
+      .sender
+      .send(message)
+      .await
+      .map_err(|_| ActorMessagingError::new("Failed to send actor message"))
   }
 }
 
@@ -81,7 +82,7 @@ where
   M: Sized + Send + 'static,
   F: Sized + Send + Sync + 'static,
 {
-  pub fn new(id: u32, sender: Sender<ActorMessage<M>>, final_properties: F) -> Self {
+  pub fn new(id: u32, sender: mpsc::Sender<ActorMessage<M>>, final_properties: F) -> Self {
     Self {
       id,
       sender,

@@ -1,4 +1,6 @@
 use super::data;
+use crate::actor_model::*;
+use crate::packet::packet_handler::ConnectionError;
 use colorful::Color;
 use colorful::Colorful;
 use openssl::symm::*;
@@ -224,37 +226,25 @@ impl PacketSenderHandle {
         Self { channel }
     }
 
-    pub async fn send_packet<P>(&mut self, packet: P) -> Result<(), String>
+    pub async fn send_packet<P>(&mut self, packet: P) -> PacketSendResult
     where
         P: crate::packet::PacketSerialOut + Sized,
     {
+        let id = P::ID;
         let mut buffer: Vec<u8> = Vec::new();
-        packet.consume_write(&mut buffer)?;
-        self.send_packet_raw(P::ID, buffer).await
+        packet
+            .consume_write(&mut buffer)
+            .map_err(|msg| ConnectionError::FailedToSend(id, msg))?;
+        self.send_packet_raw(id, buffer).await
     }
 
-    async fn send_packet_raw(&mut self, id: u32, buffer: Vec<u8>) -> Result<(), String> {
-        if let Err(e) = self
-            .channel
+    async fn send_packet_raw(&mut self, id: u32, buffer: Vec<u8>) -> PacketSendResult {
+        self.channel
             .send(PacketSenderMessage::Packet(id, buffer))
             .await
-        {
-            return Err(format!("{}", e));
-        };
-        Ok(())
-    }
-
-    pub async fn boradcast_packet(
-        &mut self,
-        broadcast: broadcast::Receiver<Option<Arc<(u32, Vec<u8>)>>>,
-    ) -> Result<(), String> {
-        if let Err(e) = self
-            .channel
-            .send(PacketSenderMessage::PacketBroadcast(broadcast))
-            .await
-        {
-            return Err(format!("{}", e));
-        };
+            .map_err(|_| ActorMessagingError::new("Failed to send packet to packet sender"))?;
         Ok(())
     }
 }
+
+pub type PacketSendResult<T = ()> = Result<T, ConnectionError>;

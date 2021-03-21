@@ -1,10 +1,8 @@
-use crate::helpers::{BitArray, NibbleArray4096};
+use crate::helpers::BitArray;
 use crate::packet::{data::write, packet_ids::PLAY_CB_CHUNK_DATA, PacketSerialOut};
 use crate::server::universe::world::ChunkSection;
 use crate::server::universe::world::{blocks, Chunk, ChunkPosition};
 use std::mem;
-extern crate nbt;
-use nbt::Value;
 
 /// # Chunk Data
 /// [Documentation](https://wiki.vg/Protocol#Chunk_Data)
@@ -79,7 +77,8 @@ impl<'a> PacketSerialOut for ChunkData<'a> {
     drop(data);
     write::var_usize(buffer, self.block_entities.len()); // Number of block entities
     for be in self.block_entities {
-      nbt::to_writer(buffer, &nbt::Value::Compound(be.clone()), None); // Block entities
+      // Should not panic because the writer is a Vec
+      nbt::to_writer(buffer, &nbt::Value::Compound(be.clone()), None).unwrap(); // Block entities
     }
     // `self` is dropped here
     Ok(())

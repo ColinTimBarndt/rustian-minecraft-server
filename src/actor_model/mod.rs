@@ -1,6 +1,5 @@
 use async_trait::async_trait;
-use tokio::sync::mpsc::channel;
-use tokio::sync::mpsc::{error::SendError, Receiver, Sender};
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 /// Structs that implement this trait are actors. They
@@ -15,7 +14,7 @@ pub trait Actor: Sized + std::fmt::Display + 'static {
   where
     Self: Send + 'static,
   {
-    let (send, recv) = channel(Self::BUFFER_SIZE);
+    let (send, recv) = mpsc::channel(Self::BUFFER_SIZE);
     let handle = self.create_handle(send);
     self.set_handle(handle.clone());
     let fut = tokio::spawn(async move { self.start_actor(recv).await });
@@ -24,7 +23,7 @@ pub trait Actor: Sized + std::fmt::Display + 'static {
 
   async fn start_actor(
     mut self,
-    mut recv: Receiver<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+    mut recv: mpsc::Receiver<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
   ) -> Self {
     loop {
       match recv.recv().await {
@@ -50,7 +49,7 @@ pub trait Actor: Sized + std::fmt::Display + 'static {
 
   fn create_handle(
     &self,
-    _sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+    _sender: mpsc::Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
   ) -> Self::Handle;
 
   /// Stores the handle of this actor for future use
@@ -71,7 +70,7 @@ pub enum ActorMessage<M: Sized + Send + 'static> {
 
 #[derive(Debug)]
 pub struct ActorHandleStruct<M: Sized + Send + 'static> {
-  pub(super) sender: Sender<ActorMessage<M>>,
+  pub(super) sender: mpsc::Sender<ActorMessage<M>>,
 }
 
 /// A handle for communicating with an actor
@@ -82,13 +81,10 @@ pub trait ActorHandle: Clone + Sized + Send + 'static {
   async fn send_raw_message(
     &mut self,
     message: ActorMessage<Self::Message>,
-  ) -> Result<(), SendError<ActorMessage<Self::Message>>>;
+  ) -> ActorMessagingResult;
 
-  async fn stop_actor(&mut self) -> Result<(), ()> {
-    match self.send_raw_message(ActorMessage::StopActor).await {
-      Ok(_) => Ok(()),
-      Err(_) => Err(()),
-    }
+  async fn stop_actor(&mut self) -> ActorMessagingResult {
+    self.send_raw_message(ActorMessage::StopActor).await
   }
 }
 
@@ -103,16 +99,17 @@ impl<M: Sized + Send + 'static> Clone for ActorHandleStruct<M> {
 #[async_trait]
 impl<M: Sized + Send + 'static> ActorHandle for ActorHandleStruct<M> {
   type Message = M;
-  async fn send_raw_message(
-    &mut self,
-    message: ActorMessage<M>,
-  ) -> Result<(), SendError<ActorMessage<M>>> {
-    self.sender.send(message).await
+  async fn send_raw_message(&mut self, message: ActorMessage<M>) -> ActorMessagingResult {
+    self
+      .sender
+      .send(message)
+      .await
+      .map_err(|_| ActorMessagingError::new("Failed to send raw actor message"))
   }
 }
 
-impl<M: Sized + Send + 'static> From<Sender<ActorMessage<M>>> for ActorHandleStruct<M> {
-  fn from(sender: Sender<ActorMessage<M>>) -> Self {
+impl<M: Sized + Send + 'static> From<mpsc::Sender<ActorMessage<M>>> for ActorHandleStruct<M> {
+  fn from(sender: mpsc::Sender<ActorMessage<M>>) -> Self {
     Self { sender }
   }
 }
@@ -127,3 +124,42 @@ default<T: CreateHandle> impl Actor for T {
   }
 }
 */
+
+#[derive(Debug, Clone, Copy)]
+pub struct ActorMessagingError {
+  message: &'static str,
+}
+
+pub type ActorMessagingResult<T = ()> = Result<T, ActorMessagingError>;
+
+impl ActorMessagingError {
+  pub const fn new(msg: &'static str) -> Self {
+    Self { message: msg }
+  }
+}
+
+impl std::fmt::Display for ActorMessagingError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+    write!(
+      f,
+      "Actor Messaging Error: \"{}\" (The other actor probably got dropped)",
+      self.message
+    )
+  }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for ActorMessagingError {
+  fn from(_: mpsc::error::SendError<T>) -> Self {
+    Self {
+      message: "Failed to send message over MPSC channel",
+    }
+  }
+}
+
+impl From<oneshot::error::RecvError> for ActorMessagingError {
+  fn from(_: oneshot::error::RecvError) -> Self {
+    Self {
+      message: "Failed to receive callback (The sender got dropped)",
+    }
+  }
+}

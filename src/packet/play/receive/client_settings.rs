@@ -1,9 +1,7 @@
 use crate::packet::{
     data::read, packet_ids::PLAY_SB_CLIENT_SETTINGS, PacketParsingError, PacketSerialIn,
 };
-use crate::server::universe::entity::player::{
-    DisplayedPlayerModelParts, PlayerChatMode, PlayerHand, PlayerSettings,
-};
+use crate::server::universe::entity::player::{DisplayedPlayerModelParts, PlayerSettings};
 
 /// # Client Settings
 /// [Documentation](https://wiki.vg/Protocol#Client_Settings)

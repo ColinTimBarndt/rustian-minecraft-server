@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut rt: runtime::Runtime = runtime::Builder::new()
         .threaded_scheduler()
         .max_threads(1024)
-        .thread_stack_size(4 * 1024 * 1024)
+        .thread_stack_size(2 * 1024 * 1024)
         .enable_io()
         .enable_time()
         .build()

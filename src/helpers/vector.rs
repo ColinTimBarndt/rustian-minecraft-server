@@ -46,6 +46,21 @@ impl<T> std::convert::From<Vec3d<T>> for (T, T, T) {
     }
 }
 
+/*
+impl<F, T> std::convert::From<Vec3d<F>> for Vec3d<T>
+where
+    F: Into<T> + !T
+{
+    fn from(f: Vec3d<F>) -> Self {
+        Self {
+            x: f.x.into(),
+            y: f.y.into(),
+            z: f.z.into(),
+        }
+    }
+}
+*/
+
 impl<T: PartialEq> std::cmp::PartialEq for Vec3d<T> {
     fn eq(&self, other: &Self) -> bool {
         self.x == other.x && self.y == other.y && self.z == other.z
@@ -487,3 +502,35 @@ implement_traits!(f32);
 implement_traits!(f64);
 implement_normalize!(f32);
 implement_normalize!(f64);
+
+impl From<Vec3d<f32>> for Vec3d<i32> {
+    fn from(f: Vec3d<f32>) -> Self {
+        assert!(f.x >= i32::MIN as f32);
+        assert!(f.y >= i32::MIN as f32);
+        assert!(f.z >= i32::MIN as f32);
+        assert!(f.x <= i32::MAX as f32);
+        assert!(f.y <= i32::MAX as f32);
+        assert!(f.z <= i32::MAX as f32);
+        Self {
+            x: f.x as i32,
+            y: f.y as i32,
+            z: f.z as i32,
+        }
+    }
+}
+
+impl From<Vec3d<f64>> for Vec3d<i32> {
+    fn from(f: Vec3d<f64>) -> Self {
+        assert!(f.x >= i32::MIN as f64);
+        assert!(f.y >= i32::MIN as f64);
+        assert!(f.z >= i32::MIN as f64);
+        assert!(f.x <= i32::MAX as f64);
+        assert!(f.y <= i32::MAX as f64);
+        assert!(f.z <= i32::MAX as f64);
+        Self {
+            x: f.x as i32,
+            y: f.y as i32,
+            z: f.z as i32,
+        }
+    }
+}

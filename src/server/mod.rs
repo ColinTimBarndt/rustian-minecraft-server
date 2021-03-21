@@ -3,12 +3,13 @@ use crate::packet::PlayerConnection;
 use futures::{future::FutureExt, select};
 use openssl::pkey::Private;
 use openssl::rsa::Rsa;
+use rustc_serialize::hex::ToHex;
 use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{channel, error::SendError, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -32,9 +33,7 @@ impl MinecraftServer {
         let private_key = Rsa::generate(1024)?;
 
         println!("=== PUBLIC KEY ===");
-        for byte in private_key.public_key_to_der()? {
-            print!("{:02X}", byte);
-        }
+        println!("{}", private_key.public_key_to_der()?.to_hex());
         println!("\n=== END PUBLIC KEY ===");
 
         let (_, u_handle) = create_universe().await;
@@ -175,28 +174,30 @@ impl MinecraftServerHandle {
             server_channel: sender,
         }
     }
-    pub async fn shutdown(&mut self) -> Result<(), SendError<MinecraftServerHandleMessage>> {
+    pub async fn shutdown(&mut self) -> ActorMessagingResult {
         self.server_channel
             .send(MinecraftServerHandleMessage::Shutdown)
-            .await?;
+            .await
+            .map_err(|_| ActorMessagingError::new("Failed to send shut down message to server"))?;
         Ok(())
     }
-    pub async fn player_disconnect(
-        &mut self,
-        addr: SocketAddr,
-    ) -> Result<(), SendError<MinecraftServerHandleMessage>> {
+    pub async fn player_disconnect(&mut self, addr: SocketAddr) -> ActorMessagingResult {
         self.server_channel
             .send(MinecraftServerHandleMessage::PlayerDisconnect(addr))
-            .await?;
-        Ok(())
+            .await
+            .map_err(|_| {
+                ActorMessagingError::new("Failed to send player disconnect message to server")
+            })
     }
-    pub async fn get_universe(&mut self, player: Uuid) -> Result<UniverseHandle, String> {
+    pub async fn get_universe(&mut self, player: Uuid) -> ActorMessagingResult<UniverseHandle> {
         let (send, recv) = oneshot::channel();
         self.server_channel
             .send(MinecraftServerHandleMessage::GetUniverse(player, send))
             .await
-            .map_err(|e| format!("{}", e))?;
-        Ok(recv.await.map_err(|e| format!("{}", e))?)
+            .map_err(|_| {
+                ActorMessagingError::new("Failed to send GetUniverse request to server")
+            })?;
+        Ok(recv.await?)
     }
 }
 

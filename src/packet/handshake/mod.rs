@@ -1,5 +1,5 @@
+use super::ConnectionError;
 use crate::packet::{PacketParsingError, PacketReceiver, PacketSerialIn};
-use std::error::Error;
 
 pub mod receive;
 
@@ -7,7 +7,7 @@ pub async fn handle(
     receiver: &mut PacketReceiver,
     id: u32,
     mut buffer: &[u8],
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), ConnectionError> {
     match id {
         receive::Handshake::ID => {
             // Handle handshake
@@ -26,6 +26,6 @@ pub async fn handle(
             }*/
             Ok(())
         }
-        _ => return Err(Box::new(PacketParsingError::UnknownPacket(id))),
+        _ => return Err(PacketParsingError::UnknownPacket(id).into()),
     }
 }

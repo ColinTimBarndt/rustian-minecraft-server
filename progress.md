@@ -11,7 +11,7 @@
 | ✅  | Client auth                                                                                                                     |
 | ✅  | C→S: Encryption Response                                                                                                        |
 | ✅  | Server auth, both enable encryption                                                                                             |
-| ✅  | S→C: Set Compression (Optional, enables compression)                                                                            |
+| ❌  | S→C: Set Compression (Optional, enables compression)                                                                            |
 | ✅  | S→C: Login Success                                                                                                              |
 | ✅  | S→C: Join Game                                                                                                                  |
 | ✅  | S→C: Plugin Message: minecraft:brand with the server's brand (Optional)                                                         |
@@ -30,12 +30,12 @@
 | ❌  | S→C: Player Info (Add Player action)                                                                                            |
 | ❌  | S→C: Player Info (Update latency action)                                                                                        |
 | ✅  | S→C: Update View Position                                                                                                       |
-| ❌  | S→C: Update Light (One sent for each chunk in a square centered on the player's position)                                       |
-| ❌  | S→C: Chunk Data (One sent for each chunk in a square centered on the player's position)                                         |
-| ❌  | S→C: World Border (Once the world is finished loading)                                                                          |
-| ❌  | S→C: Spawn Position (“home” spawn, not where the client will spawn on login)                                                    |
+| ✅  | S→C: Update Light (One sent for each chunk in a square centered on the player's position)                                       |
+| ✅  | S→C: Chunk Data (One sent for each chunk in a square centered on the player's position)                                         |
+| ✅  | S→C: World Border (Once the world is finished loading)                                                                          |
+| ✅  | S→C: Spawn Position (“home” spawn, not where the client will spawn on login)                                                    |
 | ✅  | S→C: Player Position And Look (Required, tells the client they're ready to spawn)                                               |
 | ✅  | C→S: Teleport Confirm                                                                                                           |
-| ❌  | C→S: Player Position And Look (to confirm the spawn position)                                                                   |
+| ✅  | C→S: Player Position And Look (to confirm the spawn position)                                                                   |
 | ❌  | C→S: Client Status (sent either before or while receiving chunks, further testing needed, server handles correctly if not sent) |
 | ❌  | S→C: inventory, entities, etc                                                                                                   |

@@ -1,5 +1,6 @@
 use super::*;
 use crate::helpers::{chat_components, EulerAngle, Vec3d};
+use crate::packet::packet_handler::PacketSendResult;
 use crate::server::registries::EntityType;
 
 pub mod game_profile;
@@ -119,19 +120,18 @@ pub mod online_controller {
     pub fn clone_connection_handle(&self) -> PlayerConnectionPacketHandle {
       self.final_properties.connection.clone()
     }
-    pub async fn update_settings(&mut self, settings: PlayerSettings) -> Result<(), ()> {
+    pub async fn update_settings(&mut self, settings: PlayerSettings) -> ActorMessagingResult {
       self
         .send_raw_message(ActorMessage::Other(ControllerMessage::UpdateSettings(
           settings,
         )))
         .await
-        .map_err(|_| ())
     }
     pub async fn set_selected_hotbar_slot(
       &mut self,
       slot: u8,
       update_client: bool,
-    ) -> Result<(), ()> {
+    ) -> ActorMessagingResult {
       assert!(slot <= 8, "Invalid slot id: {}", slot);
       self
         .send_raw_message(ActorMessage::Other(
@@ -141,14 +141,13 @@ pub mod online_controller {
           },
         ))
         .await
-        .map_err(|_| ())
     }
     pub async fn player_moved(
       &mut self,
       position: Option<Vec3d<f64>>,
       rotation: Option<EulerAngle>,
       on_ground: bool,
-    ) -> Result<(), ()> {
+    ) -> ActorMessagingResult {
       self
         .send_raw_message(ActorMessage::Other(ControllerMessage::PlayerMoved {
           position,
@@ -156,19 +155,17 @@ pub mod online_controller {
           on_ground,
         }))
         .await
-        .map_err(|_| ())
     }
     async fn subscribed_chunk(
       &mut self,
       position: ChunkPosition,
       handle: Option<RegionHandle>,
-    ) -> Result<(), ()> {
+    ) -> ActorMessagingResult {
       self
         .send_raw_message(ActorMessage::Other(
           ControllerMessage::PrivateSubscribedChunk { position, handle },
         ))
         .await
-        .map_err(|_| ())
     }
   }
 
@@ -192,14 +189,14 @@ pub mod online_controller {
       }
     }
 
-    pub async fn set_selected_hotbar_slot(&mut self, slot: u8) -> Result<(), String> {
+    pub async fn set_selected_hotbar_slot(&mut self, slot: u8) -> PacketSendResult {
       let packet = crate::packet::play::send::HeldItemChange { hotbar_slot: slot };
       self.connection.send_packet(packet).await?;
       self.entity.selected_hotbar_slot = slot;
       Ok(())
     }
 
-    pub async fn unsubscribe_all_chunks(&mut self) -> Result<(), ()> {
+    pub async fn unsubscribe_all_chunks(&mut self) -> ActorMessagingResult {
       let id = self.entity.id;
       let joins: Vec<_> = self
         .chunk_subscriptions
@@ -209,7 +206,8 @@ pub mod online_controller {
         })
         .collect();
       for jh in joins {
-        jh.await.map_err(|_| ())??;
+        jh.await
+          .map_err(|_| ActorMessagingError::new("Failed to unsubscribe (task panicked)"))??;
       }
       Ok(())
     }
@@ -308,7 +306,7 @@ pub mod online_controller {
 
     fn create_handle(
       &self,
-      sender: Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
+      sender: mpsc::Sender<ActorMessage<<Self::Handle as ActorHandle>::Message>>,
     ) -> Self::Handle {
       ControllerHandle::new(
         self.entity.id,
