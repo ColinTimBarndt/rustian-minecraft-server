@@ -1,3 +1,4 @@
+mod block_change;
 mod chat_message;
 mod chunk_data;
 mod declare_commands;
@@ -20,6 +21,7 @@ mod update_light;
 mod update_view_position;
 pub mod world_border;
 
+pub use block_change::*;
 pub use chat_message::*;
 pub use chunk_data::*;
 pub use declare_commands::*;

@@ -1,15 +1,20 @@
-use crate::helpers::{NamespacedKey, MINECRAFT_NAMESPACE};
 use crate::packet::data::write;
+use crate::{
+    helpers::{NamespacedKey, MINECRAFT_NAMESPACE},
+    server::universe::UniqueIdGenerator,
+};
 use std::collections::{HashMap, HashSet};
-use uuid::Uuid;
 
 mod number_bounds;
 pub use number_bounds::*;
 
+pub type NodeId = u32;
+
 #[derive(Clone, Debug)]
 pub struct NodeGraph {
-    nodes: HashMap<Uuid, Node>,
-    root: Option<Uuid>,
+    nodes: HashMap<NodeId, Node>,
+    root: Option<NodeId>,
+    idgen: UniqueIdGenerator,
 }
 
 #[derive(Clone, Debug)]
@@ -19,16 +24,16 @@ pub struct Node {
     /// is the last node in the command
     pub executable: bool,
     /// Id of this node. The id has to be unique in the graph
-    id: Uuid,
+    id: NodeId,
     // Used to connect this node as a child to a parent
     // The parent has to list it in the parents Vec
-    children: HashSet<Uuid>,
-    parents: HashSet<Uuid>,
+    children: HashSet<NodeId>,
+    parents: HashSet<NodeId>,
     // Used to redirect from this node to another one
     // The node that is redirected to has to list it
     // in its `redirected_from` property
-    redirects_to: Option<Uuid>,
-    redirected_from: HashSet<Uuid>,
+    redirects_to: Option<NodeId>,
+    redirected_from: HashSet<NodeId>,
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -46,24 +51,26 @@ impl NodeGraph {
         Self {
             nodes: HashMap::new(),
             root: None,
+            idgen: UniqueIdGenerator::new(),
         }
     }
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             nodes: HashMap::with_capacity(capacity),
             root: None,
+            idgen: UniqueIdGenerator::new(),
         }
     }
     /// Creates a new node and adds it to the graph
-    pub fn create_node(&mut self, node_type: NodeType) -> Uuid {
-        let uuid = self.create_uuid();
+    pub fn create_node(&mut self, node_type: NodeType) -> NodeId {
+        let uid = self.create_uid();
         let node = Node {
-            id: uuid,
+            id: uid,
             node_type: node_type,
             ..Node::new()
         };
-        self.nodes.insert(uuid, node);
-        uuid.clone()
+        self.nodes.insert(uid, node);
+        uid.clone()
     }
     /// Creates a new node and calls the mutator before it is
     /// added to the graph
@@ -71,48 +78,44 @@ impl NodeGraph {
         &mut self,
         node_type: NodeType,
         mutator: impl Fn(&mut Node) -> (),
-    ) -> Uuid {
-        let uuid = self.create_uuid();
+    ) -> NodeId {
+        let uid = self.create_uid();
         let mut node = Node {
-            id: uuid,
+            id: uid,
             node_type: node_type,
             ..Node::new()
         };
         mutator(&mut node);
-        self.nodes.insert(uuid, node);
-        uuid.clone()
+        self.nodes.insert(uid, node);
+        uid
     }
-    fn create_uuid(&self) -> Uuid {
-        let mut uuid = Uuid::new_v4();
-        while self.nodes.contains_key(&uuid) {
-            uuid = Uuid::new_v4();
-        }
-        uuid
+    fn create_uid(&mut self) -> NodeId {
+        self.idgen.reserve()
     }
-    pub fn get_node(&self, uuid: &Uuid) -> Option<&Node> {
-        self.nodes.get(uuid)
+    pub fn get_node(&self, uid: NodeId) -> Option<&Node> {
+        self.nodes.get(&uid)
     }
-    pub fn get_node_mut(&mut self, uuid: &Uuid) -> Option<&mut Node> {
-        self.nodes.get_mut(uuid)
+    pub fn get_node_mut(&mut self, uid: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(&uid)
     }
-    pub fn has_node(&self, uuid: &Uuid) -> bool {
-        self.nodes.contains_key(uuid)
+    pub fn has_node(&self, uid: NodeId) -> bool {
+        self.nodes.contains_key(&uid)
     }
     /// This function sets one node as the parent of another node.
     /// If the child node already has a parent, then it is moved into
     /// the new relation, removing the child from its previous parent.
-    pub fn set_child(&mut self, parent: &Uuid, child: &Uuid) {
+    pub fn set_child(&mut self, parent: NodeId, child: NodeId) {
         debug_assert!(self.has_node(parent), "Parent is not in this graph");
         debug_assert!(self.has_node(child), "Child is not in this graph");
         let parent_node = self.get_node_mut(parent).unwrap();
-        if !parent_node.children.insert(*child) {
+        if !parent_node.children.insert(child) {
             // The parent->child relation already exists
             return;
         }
         drop(parent_node);
         let child_node = self.get_node_mut(child).unwrap();
         let previous_parents = child_node.parents.clone();
-        let has_parent = child_node.parents.insert(*parent);
+        let has_parent = child_node.parents.insert(parent);
         debug_assert!(
             has_parent,
             "Child node already has parent, but not in reverse!"
@@ -123,21 +126,21 @@ impl NodeGraph {
                 self.nodes.contains_key(&previous_parent),
                 "Previous parent is not in this graph"
             );
-            let previous_parent_node = self.get_node_mut(&previous_parent).unwrap();
-            let had_child = previous_parent_node.children.remove(child);
+            let previous_parent_node = self.get_node_mut(previous_parent).unwrap();
+            let had_child = previous_parent_node.children.remove(&child);
             debug_assert!(had_child, "Previous parent did not have the child");
         }
     }
-    pub fn remove_child(&mut self, parent: &Uuid, child: &Uuid) -> bool {
+    pub fn remove_child(&mut self, parent: NodeId, child: NodeId) -> bool {
         debug_assert!(self.has_node(parent), "Root node is not in this graph");
         debug_assert!(self.has_node(child), "Root node is not in this graph");
         let parent_n = self.get_node_mut(parent).unwrap();
-        if !parent_n.children.remove(child) {
+        if !parent_n.children.remove(&child) {
             return false;
         }
         drop(parent_n);
         let child_n = self.get_node_mut(child).unwrap();
-        let parent_removed = child_n.parents.remove(parent);
+        let parent_removed = child_n.parents.remove(&parent);
         debug_assert!(
             parent_removed,
             "Child did not have the parent, but in reverse!"
@@ -147,31 +150,26 @@ impl NodeGraph {
     }
     /// Sets the root node of this graph. This will set the node
     /// type to Root and safely remove all parents from this node
-    pub fn set_root(&mut self, root: &Uuid) {
+    pub fn set_root(&mut self, root: NodeId) {
         debug_assert!(self.has_node(root), "Root node is not in this graph");
         let root_n = self.get_node_mut(root).unwrap();
         root_n.node_type = NodeType::Root;
-        let parents = root_n.parents.clone();
-        root_n.parents.clear();
-        drop(root_n);
-        // Mutable reference no longer needed
-        //let root_n = &*root_n;
-        for parent in &parents {
+        for parent in std::mem::replace(&mut root_n.parents, HashSet::with_capacity(0)).drain() {
             let parent_n = self.get_node_mut(parent).unwrap();
-            let had_child = parent_n.children.remove(root);
+            let had_child = parent_n.children.remove(&root);
             debug_assert!(had_child, "Previous parent did not have root as a child");
         }
-        self.root = Some(*root);
+        self.root = Some(root);
     }
     /// This function sets the redirect of the node if it not already
     /// exists.
-    pub fn set_redirect(&mut self, node: &Uuid, redirect: &Uuid) {
+    pub fn set_redirect(&mut self, node: NodeId, redirect: NodeId) {
         debug_assert!(self.has_node(node), "Node is not in this graph");
         debug_assert!(self.has_node(redirect), "Redirect is not in this graph");
         let node_n = self.get_node_mut(node).unwrap();
         let node_redirect = &mut node_n.redirects_to;
         let previous_redirect = *node_redirect;
-        *node_redirect = Some(*redirect);
+        *node_redirect = Some(redirect);
         if previous_redirect == *node_redirect {
             // Already redirecting to this node.
             return;
@@ -179,18 +177,18 @@ impl NodeGraph {
         drop(node_n);
         if let Some(previous_redirect) = previous_redirect {
             debug_assert!(
-                self.has_node(&previous_redirect),
+                self.has_node(previous_redirect),
                 "Previously redirected is not in this graph"
             );
-            let previous_redirect_node = self.get_node_mut(&previous_redirect).unwrap();
-            let had_redirection = previous_redirect_node.redirected_from.remove(node);
+            let previous_redirect_node = self.get_node_mut(previous_redirect).unwrap();
+            let had_redirection = previous_redirect_node.redirected_from.remove(&node);
             debug_assert!(
                 had_redirection,
                 "Previously redirected node did not have a reference to the redirecting node"
             );
         }
         let redirect_node = self.get_node_mut(redirect).unwrap();
-        let redirect_inserted = redirect_node.redirected_from.insert(*node);
+        let redirect_inserted = redirect_node.redirected_from.insert(node);
         debug_assert!(
             redirect_inserted,
             "Redirection already existed in the redirected node"
@@ -199,7 +197,7 @@ impl NodeGraph {
     }
     /// This functions removes the redirect of the node. The node
     /// has to be an Argument Node, otherwise this unction panics.
-    pub fn remove_redirect(&mut self, node: &Uuid) {
+    pub fn remove_redirect(&mut self, node: NodeId) {
         debug_assert!(self.has_node(node), "Node is not in this graph");
         let node_n = self.get_node_mut(node).unwrap();
         let node_redirect = &mut node_n.redirects_to;
@@ -208,11 +206,11 @@ impl NodeGraph {
         drop(node_n);
         if let Some(previous_redirect) = previous_redirect {
             debug_assert!(
-                self.has_node(&previous_redirect),
+                self.has_node(previous_redirect),
                 "Previously redirected is not in this graph"
             );
-            let previous_redirect_node = self.get_node_mut(&previous_redirect).unwrap();
-            let had_redirection = previous_redirect_node.redirected_from.remove(node);
+            let previous_redirect_node = self.get_node_mut(previous_redirect).unwrap();
+            let had_redirection = previous_redirect_node.redirected_from.remove(&node);
             debug_assert!(
                 had_redirection,
                 "Previously redirected node did not have a reference to the redirecting node"
@@ -221,22 +219,22 @@ impl NodeGraph {
     }
     /// Safely removes a node from the graph. This means that all
     /// other references to this node in the graph are removed.
-    pub fn remove_node(&mut self, node: &Uuid) {
-        match self.nodes.remove_entry(node) {
+    pub fn remove_node(&mut self, node: NodeId) {
+        match self.nodes.remove_entry(&node) {
             Some((_uuid, node_n)) => {
                 // Remove references in parents
-                for parent in &node_n.parents {
+                for parent in node_n.parents.iter().cloned() {
                     debug_assert!(self.has_node(parent), "Parent is not in this graph");
                     let parent_n = self.get_node_mut(parent).unwrap();
-                    let had_child = parent_n.children.remove(node);
+                    let had_child = parent_n.children.remove(&node);
                     debug_assert!(had_child, "Parent did not have this node as a child");
                 }
                 // Remove references in redirectors
-                for redirector in &node_n.redirected_from {
+                for redirector in node_n.redirected_from.iter().cloned() {
                     debug_assert!(self.has_node(redirector), "Parent is not in this graph");
                     let redirector_n = self.get_node_mut(redirector).unwrap();
-                    let node_redirect = &mut redirector_n.redirects_to;
-                    if let Some(redirected) = &node_redirect {
+                    let node_redirect = redirector_n.redirects_to.clone();
+                    if let Some(redirected) = node_redirect {
                         debug_assert_eq!(
                             redirected, node,
                             "Redirector does not redirect to this node"
@@ -244,9 +242,9 @@ impl NodeGraph {
                     } else {
                         panic!("Reidrector does not redirect")
                     }
-                    *node_redirect = None;
+                    redirector_n.redirects_to = None;
                 }
-                if self.root.as_ref() == Some(node) {
+                if self.root == Some(node) {
                     self.root = None;
                 }
             }
@@ -255,40 +253,40 @@ impl NodeGraph {
     }
     pub fn serialize_graph(&self, buffer: &mut Vec<u8>) {
         assert!(self.root.is_some(), "This graph does not have a root node!");
-        let mut sorted: Vec<Uuid> = Vec::with_capacity(self.nodes.len());
+        let mut sorted: Vec<NodeId> = Vec::with_capacity(self.nodes.len());
 
         // Traverse the graph to sort the nodes in an order
         // that node childs are declared before the parent.
         {
-            let root_id: &Uuid = self.root.as_ref().unwrap();
-            sorted.push(*root_id);
+            let root_id = *self.root.as_ref().unwrap();
+            sorted.push(root_id);
             traverse(self, &mut sorted, root_id);
 
-            fn traverse(graph: &NodeGraph, sorted: &mut Vec<Uuid>, node: &Uuid) {
+            fn traverse(graph: &NodeGraph, sorted: &mut Vec<NodeId>, node: NodeId) {
                 let node_n: &Node = graph.get_node(node).unwrap();
-                for child in &node_n.children {
+                for child in node_n.children.iter().cloned() {
                     traverse(graph, sorted, child);
                 }
-                sorted.push(*node);
+                sorted.push(node);
             }
         }
 
-        let mut visited: HashSet<&Uuid> = HashSet::with_capacity(sorted.len());
+        let mut visited: HashSet<NodeId> = HashSet::with_capacity(sorted.len());
         let sorted: Vec<&Node> = sorted
             .iter()
             .rev()
-            .filter(|uuid| visited.insert(uuid))
-            .map(|uuid| self.get_node(uuid).unwrap())
+            .filter(|&&uid| visited.insert(uid))
+            .map(|&uid| self.get_node(uid).unwrap())
             .collect();
         drop(visited);
 
-        let mappings: HashMap<Uuid, usize> = sorted
+        let mappings: HashMap<NodeId, usize> = sorted
             .iter()
             .enumerate()
             .map(|(idx, node)| (node.id, idx))
             .collect();
         // Estimate the amount of data in bytes and allocate it
-        // so that the buffer has to allocate less ofter while writing
+        // so that the buffer has to allocate less often while writing
         // TODO: This could be made more precise
         buffer.reserve(sorted.len() * 26);
         write::var_usize(buffer, sorted.len());
@@ -304,18 +302,18 @@ impl NodeGraph {
             if let NodeType::Argument(arg) = &node.node_type {
               (arg.suggestion_type.is_some() as u8) << 4
             } else {0};
-            write::u8(buffer, flags);
-            write::var_usize(buffer, node.children.len());
-            for child_id in &node.children {
-                write::var_usize(buffer, *mappings.get(child_id).unwrap());
+            write::u8(buffer, flags); // Flags
+            write::var_usize(buffer, node.children.len()); // Children count
+            for child_id in node.children.iter().cloned() {
+                write::var_usize(buffer, *mappings.get(&child_id).unwrap()); // Child node index
             }
-            if let Some(id) = &node.redirects_to {
-                write::var_usize(buffer, *mappings.get(id).unwrap());
+            if let Some(id) = node.redirects_to.clone() {
+                write::var_usize(buffer, *mappings.get(&id).unwrap()); // Redirect node index
             }
             match &node.node_type {
                 NodeType::Literal(name) => write::string(buffer, name),
                 NodeType::Argument(arg) => {
-                    write::string(buffer, &arg.name);
+                    write::string(buffer, &arg.name); // Name
                     (&arg.parser).serialize_parser(buffer);
                     if let Some(suggestion_type) = &arg.suggestion_type {
                         write::string(buffer, &suggestion_type.get_id().to_string());
@@ -324,7 +322,7 @@ impl NodeGraph {
                 _ => (),
             }
         }
-        write::var_usize(buffer, *mappings.get(&(&self.root).unwrap()).unwrap());
+        write::var_usize(buffer, *mappings.get(&self.root.unwrap()).unwrap());
     }
 }
 
@@ -333,16 +331,16 @@ impl Node {
     // generated and not the same one => this function has side-effects
     fn new() -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: 0,
             node_type: NodeType::Root,
             executable: false,
-            children: HashSet::new(),
-            parents: HashSet::new(),
+            children: HashSet::with_capacity(2),
+            parents: HashSet::with_capacity(2),
             redirects_to: None,
             redirected_from: HashSet::new(),
         }
     }
-    pub fn get_id(&self) -> &Uuid {
+    pub fn get_id(&self) -> &NodeId {
         &self.id
     }
     /// Returns whether the node is needed in the graph.
@@ -397,32 +395,35 @@ impl ArgumentParser {
     pub fn serialize_parser(&self, buffer: &mut Vec<u8>) {
         match self {
             Self::Double(range) => {
-                buffer.append(&mut b"brigadier:double".to_vec());
+                write::raw(buffer, b"brigadier:double");
                 range.serialize_bounds(buffer);
             }
             Self::Float(range) => {
-                buffer.append(&mut b"brigadier:float".to_vec());
+                write::raw(buffer, b"brigadier:float");
                 range.serialize_bounds(buffer);
             }
             Self::Integer(range) => {
-                buffer.append(&mut b"brigadier:integer".to_vec());
+                write::raw(buffer, b"brigadier:integer");
                 range.serialize_bounds(buffer);
             }
             Self::String(t) => {
-                buffer.append(&mut b"brigadier:string".to_vec());
+                write::raw(buffer, b"brigadier:string");
                 write::var_u8(buffer, *t as u8);
             }
             Self::Entity(restrictions) => {
-                buffer.append(&mut b"minecraft:entity".to_vec());
+                write::raw(buffer, b"minecraft:entity");
                 write::u8(buffer, *restrictions as u8);
             }
             other => {
-                buffer.append(&mut match other {
-                    Self::Bool => b"minecraft:bool".to_vec(),
-                    Self::GameProfile => b"minecraft:game_profile".to_vec(),
-                    Self::BlockPosition => b"minecraft:block_pos".to_vec(),
-                    _ => panic!("[commands/parsing/mod.rs] This state shouldn't be reachable"),
-                });
+                write::raw(
+                    buffer,
+                    &mut match other {
+                        Self::Bool => b"minecraft:bool".as_ref(),
+                        Self::GameProfile => b"minecraft:game_profile".as_ref(),
+                        Self::BlockPosition => b"minecraft:block_pos".as_ref(),
+                        _ => panic!("[commands/parsing/mod.rs] This state shouldn't be reachable"),
+                    },
+                );
             }
         }
     }

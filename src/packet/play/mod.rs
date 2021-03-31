@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use super::ConnectionError;
+use crate::actor_model::*;
 use crate::helpers::chat_components::{ChatColor, ChatComponent};
 use crate::packet::{
     LoggingInState, PacketHandlerMessage, PacketParsingError, PacketReceiver, PacketSerialIn,
 };
-use crate::{actor_model::*, helpers::chat_components::ChatComponentType};
 use colorful::{Color, Colorful};
 use tokio::sync::Mutex;
 
@@ -128,6 +128,22 @@ pub async fn handle(
             }
             return Ok(());
         }
+        receive::ChatMessage::ID => {
+            if receiver.logging_in_state().await == LoggingInState::LoggedIn {
+                let mut guard = receiver.get_player().await;
+                if let Some(player) = &mut *guard {
+                    let packet = receive::ChatMessage::read(&mut buffer)?;
+                    if packet.is_command() {
+                        player
+                            .perform_command(packet.message[1..].to_string())
+                            .await?;
+                    } else {
+                        println!("CHAT <{}> {}", player.get_name(), packet.message);
+                    }
+                }
+            }
+            return Ok(());
+        }
         receive::ClientSettings::ID => {
             let packet = receive::ClientSettings::read(&mut buffer)?;
 
@@ -174,21 +190,40 @@ pub async fn handle(
                 }
 
                 {
-                    use crate::server::universe::commands::parsing::{NodeGraph, NodeType};
+                    use crate::server::universe::commands::parsing::{
+                        ArgumentNodeType, ArgumentParser, NodeGraph, NodeType, NumberBounds,
+                    };
                     // TODO: Get commands from universe
                     let mut graph = NodeGraph::new();
                     {
                         // Build a parsing graph for testing:
                         // - ROOT
-                        //   - "foobarbaz"
+                        //   - "setblock"
+                        //     - <block position>
+                        //       - <block state>
                         // This means that the command `/foobarbaz` should exist now
                         let root = graph.create_node(NodeType::Root);
-                        graph.set_root(&root);
-                        let test_command =
-                            graph.create_node(NodeType::Literal("test-command".into()));
-                        graph.set_child(&root, &test_command);
-                        let command1 = graph.create_node(NodeType::Literal("foobarbaz".into()));
-                        graph.set_child(&root, &command1);
+                        graph.set_root(root);
+                        let setblock_command =
+                            graph.create_node(NodeType::Literal("setblock".into()));
+                        graph.set_child(root, setblock_command);
+                        let setblock_command_position =
+                            graph.create_node(NodeType::Argument(ArgumentNodeType {
+                                name: "block position".into(),
+                                parser: ArgumentParser::BlockPosition,
+                                suggestion_type: None,
+                            }));
+                        graph.set_child(setblock_command, setblock_command_position);
+                        let setblock_command_state =
+                            graph.create_node(NodeType::Argument(ArgumentNodeType {
+                                name: "block state".into(),
+                                parser: ArgumentParser::Integer(NumberBounds {
+                                    min: Some(0),
+                                    max: None,
+                                }),
+                                suggestion_type: None,
+                            }));
+                        graph.set_child(setblock_command_position, setblock_command_state);
                     }
                     let commands_packet = super::play::send::DeclareCommands {
                         command_parsing_graph: &graph,
@@ -229,9 +264,7 @@ pub async fn handle(
                     receiver
                         .send_packet(crate::packet::play::send::PlayerInfo::AddPlayer(&[
                             crate::packet::play::send::PlayerInfoAddPlayerEntry {
-                                display_name: Some(&[
-                                    ChatComponent::text("UwU").set_color(ChatColor::Gold)
-                                ]),
+                                display_name: None,
                                 gamemode: crate::server::universe::Gamemode::Adventure,
                                 ping: -1,
                                 profile: &player.profile,

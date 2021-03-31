@@ -1,3 +1,4 @@
+mod chat_message;
 mod client_settings;
 pub mod entity_action;
 mod held_item_change;
@@ -8,6 +9,7 @@ mod player_rotation;
 mod plugin_message;
 mod teleport_confirm;
 
+pub use chat_message::*;
 pub use client_settings::*;
 pub use entity_action::EntityAction;
 pub use held_item_change::*;

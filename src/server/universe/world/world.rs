@@ -59,11 +59,7 @@ impl BlockWorld {
         if self.loaded_chunks.contains(&chunk_position) {
             let region = self.get_region_handle(region_position).unwrap();
             match region
-                .get_block(Vec3d::new(
-                    pos.x % super::CHUNK_BLOCK_WIDTH as i32,
-                    pos.y,
-                    pos.z % super::CHUNK_BLOCK_WIDTH as i32,
-                ))
+                .get_block(Vec3d::new(pos.x % 32, pos.y, pos.z % 32))
                 .await
             {
                 Ok(b) => b,
@@ -87,6 +83,36 @@ impl BlockWorld {
             } else {
                 None
             }
+        }
+    }
+
+    pub async fn set_block_at_pos(&mut self, pos: Vec3d<i32>, block: Block) {
+        if !(0..256).contains(&pos.y) {
+            // Outside of chunk building limit
+            return;
+        }
+        let region_position: RegionPosition = pos.into();
+        let chunk_position: ChunkPosition = pos.into();
+        if self.loaded_chunks.contains(&chunk_position) {
+            let region = self.get_region_handle(region_position).unwrap();
+            match region
+                .set_block(Vec3d::new(pos.x % 32, pos.y, pos.z % 32), block)
+                .await
+            {
+                Ok(()) => (),
+                Err(_) => {
+                    eprintln!("[world.rs] Unable to get block in region");
+                    return;
+                }
+            }
+        } else {
+            self.load_chunk(chunk_position, |chunk| {
+                chunk.set_block_at_pos(
+                    Vec3d::new((pos.x % 16) as u8, pos.y as u8, (pos.z % 16) as u8),
+                    block,
+                );
+            })
+            .await;
         }
     }
 
@@ -137,6 +163,10 @@ impl Actor for BlockWorld {
                         eprintln!("[world.rs] Failed to send GetBlockAtPos result");
                     }
                 }
+                true
+            }
+            WorldMessage::SetBlockAtPos(pos, block) => {
+                self.set_block_at_pos(pos, block).await;
                 true
             }
             WorldMessage::GetSpawnPosition(callback) => {
@@ -233,8 +263,8 @@ impl Actor for BlockWorld {
                             .send_packet(WorldBorder::Initialize {
                                 position: (8.0, 8.0),
                                 lerp: WorldBorderLerp {
-                                    from: 32.0,
-                                    to: 32.0,
+                                    from: 1024.0,
+                                    to: 1024.0,
                                     speed: 0,
                                 },
                                 teleport_boundary: WorldBorder::DEFAULT_TELEPORT_BOUNDARY,
@@ -381,6 +411,7 @@ impl Actor for BlockWorld {
 pub enum WorldMessage {
     /// A position, a callback and whether to load unloaded chunks
     GetBlockAtPos(Vec3d<i32>, oneshot::Sender<Option<Block>>, bool),
+    SetBlockAtPos(Vec3d<i32>, Block),
     GetSpawnPosition(oneshot::Sender<Vec3d<f64>>),
     SpawnEntityPlayerOnline {
         connection: PlayerConnectionPacketHandle,
@@ -425,6 +456,15 @@ impl WorldHandle {
         )))
         .await?;
         Ok(recv.await?)
+    }
+    /// Gets the block at the specified position
+    pub async fn set_block_at_pos(
+        &mut self,
+        pos: Vec3d<i32>,
+        block: Block,
+    ) -> ActorMessagingResult {
+        self.send_raw_message(ActorMessage::Other(WorldMessage::SetBlockAtPos(pos, block)))
+            .await
     }
     /// Gets the spawn position of this world.
     pub async fn get_spawn_position(&mut self) -> ActorMessagingResult<Vec3d<f64>> {

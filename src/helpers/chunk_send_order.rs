@@ -221,7 +221,7 @@ const GROUPS: [u8; 17] = [1, 1, 1, 2, 5, 7, 5, 10, 10, 11, 13, 17, 17, 19, 20, 1
 
 /// Returns a `Vec` containing the positions of all chunks that
 /// have to be loaded, sorted by their distance to the given offset.
-pub fn get_chunks_to_load(render_distance: u8, offset: ChunkPosition, loaded: &HashSet<ChunkPosition>) -> Vec<ChunkPosition> {
+pub fn get_chunks_to_load(render_distance: u8, offset: ChunkPosition, loaded: impl Fn(&ChunkPosition) -> bool) -> Vec<ChunkPosition> {
   assert!(
     render_distance <= MAX_RENDER_DISTANCE,
     "Given render distance is greater than the supported distance ({} > {})",
@@ -238,7 +238,7 @@ pub fn get_chunks_to_load(render_distance: u8, offset: ChunkPosition, loaded: &H
       }
       for (x, z) in *off {
         let chunk = ChunkPosition::new(offset.x + (*x as i32), offset.z + (*z as i32));
-        if !loaded.contains(&chunk) {
+        if !loaded(&chunk) {
           chunks.push(chunk)
         }
       }

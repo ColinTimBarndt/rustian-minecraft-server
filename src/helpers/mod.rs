@@ -21,12 +21,11 @@ pub mod mojang_api;
 
 #[test]
 fn test_chunk_send_order() {
-  use crate::server::universe::world::chunk::ChunkPosition;
-  let center = ChunkPosition::new(2, 1);
-  let loaded = [ChunkPosition::new(2, 2)].iter().cloned().collect();
-  let result = get_chunks_to_load(3, center, &loaded);
-  for pos in &result {
-    println!("Pos: {:?}", pos);
-  }
-  println!("Length: {}", result.len());
+    use crate::server::universe::world::chunk::ChunkPosition;
+    let center = ChunkPosition::new(2, 1);
+    let result = get_chunks_to_load(3, center, |c| *c == ChunkPosition::new(2, 2));
+    for pos in &result {
+        println!("Pos: {:?}", pos);
+    }
+    println!("Length: {}", result.len());
 }
