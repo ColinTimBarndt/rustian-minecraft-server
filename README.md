@@ -3,6 +3,10 @@
 [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](#)
 [![Status: Discontinued](https://img.shields.io/badge/Status-Discontinued-important)](#)
 
+> **:warning: DISCLAIMER:**
+> I am not going to change the code of this repository. The dependencies are outdated and
+> contain serious exploits. DO NOT USE THIS SOFTWARE
+
 Rustian was a school project where I have rewritten the core of a Minecraft Java 1.15.2
 Server completely in Rust using the Actor Model to utilize the full potential of a modern
 CPU. **This project needs OpenSSL to work.**
